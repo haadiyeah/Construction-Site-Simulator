@@ -6,13 +6,14 @@
 #include <vector>
 #include <errno.h>
 #include <string.h>
-#include <sstream> // Include the missing header file
+#include <sstream> 
 #include <algorithm>
 #include <cstring>
 
 #include "Workers.h"
 #include "Utils.h"
 
+using namespace std;
 
 bool isRunning = true;
 bool isRaining = false;
@@ -23,8 +24,6 @@ const char * workingWorkersFifoPath = "/tmp/workingWorkersFifo";
 
 vector<Worker> idleWorkers;
 vector<Worker> workingWorkers;
-
-using namespace std;
 
 
 void getWorkersLists() {

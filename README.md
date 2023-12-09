@@ -1,5 +1,5 @@
 # Instructions to run
-1. First open two split terminals
+1. First open two split terminals in the project directory.
 2. On one terminal run the following:
 `g++ ConstructionSite_Input.cpp -o input -pthread`
 then:
