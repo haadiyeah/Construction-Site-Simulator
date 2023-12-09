@@ -13,7 +13,7 @@ struct Task
     int numWorkers;             // number of workers required to implement this task
 };
 
-class TaskManager
+class TaskGenerator
 {
     // • High Priority Tasks: Urgent repairs, foundation laying, critical structural work.
     // • Medium Priority Tasks: General construction tasks, bricklaying, cement mixing.
@@ -26,8 +26,22 @@ private:
     Task highPrioTasks[3] = {};
     string resourceTypes[3] = {"Brick", "Cement", "Tool"};
 
+    void initTask(Task &t)
+    {
+        t.time = rand() % 10 + 1;
+        int numResources = rand() % 5 + 1;
+        for (int j = 0; j < numResources; j++)
+        {
+            Resource r;
+            r.type = resourceTypes[rand() % 3];
+            r.quality = 100;
+            t.resources.push_back(r);
+        }
+        t.numWorkers = rand() % 5 + 1;
+    }
+
 public:
-    TaskManager()
+    TaskGenerator()
     {
         string lowPrioTaskNames[3] = {"Non-critical task", "Decorating", "Painting"};
         string medPrioTaskNames[3] = {"Scaffolding", "Bricklaying", "Cement mixing"};
@@ -46,20 +60,6 @@ public:
             medPrioTasks[i].priority = 2;
             initTask(medPrioTasks[i]);
         }
-    }
-
-    void initTask(Task &t)
-    {
-        t.time = rand() % 10 + 1;
-        int numResources = rand() % 5 + 1;
-        for (int j = 0; j < numResources; j++)
-        {
-            Resource r;
-            r.type = resourceTypes[rand() % 3];
-            r.quality = 100;
-            t.resources.push_back(r);
-        }
-        t.numWorkers = rand() % 5 + 1;
     }
 
     Task generateTask(int priority = 0)
