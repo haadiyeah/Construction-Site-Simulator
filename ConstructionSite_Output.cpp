@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <unistd.h>
+#include <sys/wait.h>
 #include <pthread.h>
 #include <queue>
 #include <vector>
@@ -19,17 +20,22 @@ using namespace std;
 
 bool isRunning = true;
 bool isRaining = false;
-const char * runningFifoPath = "/tmp/isRunningFifo";
-const char * rainingFifoPath = "/tmp/isRainingFifo";
+
+int parentToChild[2];
+int childToParent[2];
+const char *runningFifoPath = "/tmp/isRunningFifo";
+const char *rainingFifoPath = "/tmp/isRainingFifo";
 const char * idleWorkersFifoPath = "/tmp/idleWorkersFifo";
 const char * workingWorkersFifoPath = "/tmp/workingWorkersFifo";
 
 const int MAX_CAPACITY = 50; // max capacity for each type of resource
 TaskGenerator taskGenerator;
 TasksScheduler tasksScheduler;
+WorkerGenerator workerGenerator;
 
 pthread_mutex_t materialsMutex[3] = {PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER};
 vector<vector<Resource>> materials(3); // 0 - bricks, 1 - cement, 2 - tools
+vector<Worker> backupWorkers;          // virtual workers
 vector<Worker> idleWorkers;
 vector<Worker> workingWorkers;
 
@@ -56,7 +62,7 @@ void *supplyFactory(void *arg)
                     break;
                 }
                 r.quality = 100;
-                cout << "Supply factory: Produced 1 " << r.type << endl;
+                // cout << "Supply factory: Produced 1 " << r.type << endl;
                 materials[i].push_back(r);
                 pthread_mutex_unlock(&materialsMutex[i]);
             }
@@ -68,9 +74,9 @@ void *supplyFactory(void *arg)
 
 void *materialDegredation(void *arg)
 { // degrades the first pushed resource of each type
+    // cout << "Material Degredation: Degredation started" << endl;
     while (isRunning)
     {
-        cout << "Material Degredation: Degredation started" << endl;
         for (int i = 0; i < 3; i++)
         {
             if (!materials[i].empty())
@@ -79,7 +85,7 @@ void *materialDegredation(void *arg)
                 Resource r = materials[i].front();
                 // materials[i].pop_back(); // remove the first pushed resource
                 r.quality -= 10;
-                cout << "Material Degredation: " << r.type << " quality is " << r.quality << endl;
+                // cout << "Material Degredation: " << r.type << " quality is " << r.quality << endl;
                 if (r.quality > 0)
                 {
                     // materials[i].push_back(r);
@@ -90,6 +96,7 @@ void *materialDegredation(void *arg)
                     {
                     case 0:
                         cout << "Material Degredation: Brick quality is 0 and brick is destroyed" << endl;
+                        // pop
                         break;
                     case 1:
                         cout << "Material Degredation: Cement quality is 0 and cement is destroyed" << endl;
@@ -120,15 +127,139 @@ void *taskCreation(void *arg)
     pthread_exit(NULL);
 }
 
-void *tasksExecution(void *arg)
+void *execution(void *arg)
 {
+    cout << "in thread Execution: Execution started" << endl;
+
+    Task task = *(Task *)arg;
+    cout << "Task time: " << task.time << endl;
+
+    bool rain;
+
+    // read(parentToChild[0], &rain, sizeof(rain));
+    // cout << "Rain: " << rain << endl;
+
+    while (read(parentToChild[0], &rain, sizeof(rain)))
+    {
+        cout << "in thread Execution: Waiting for rain status" << endl;
+        cout << "Rain read: " << rain << endl;
+
+        if (!task.indoor && rain)
+        {
+            int time = task.time * -1;
+            write(childToParent[1], &time, sizeof(time));
+            cout << "Task " << task.taskName << " interrupted!" << endl;
+            break;
+        }
+
+        task.time--;
+        cout << "Task " << task.taskName << " is being executed. Time remaining: " << task.time << endl;
+        write(childToParent[1], &task.time, sizeof(task.time));
+        sleep(1);
+
+        if (task.time == 0)
+        {
+            pthread_exit(NULL);
+        }
+    }
+
+    pthread_exit(NULL);
+}
+
+Worker getWorkingWorker(int id)
+{
+    for (int i = 0; i < workingWorkers.size(); i++)
+    {
+        if (workingWorkers[i].workerId == id)
+        {
+            return workingWorkers[i];
+        }
+    }
+}
+
+void *tasksExecution(void *arg) //
+{
+    cout << "Tasks Execution: Tasks execution started" << endl;
+
     while (isRunning)
     {
-        Task task = tasksScheduler.getTask();
-        cout << "Task Execution: Task " << task.taskName << " started" << endl;
-        // pthread_create(&executeTask, NULL, taskExecution, NULL);
-        sleep(task.time);
-        cout << "Task Execution: Task " << task.taskName << " finished" << endl;
+        pipe(parentToChild);
+        pipe(childToParent);
+
+        // Task task = tasksScheduler.getTask(isRaining, materials, idleWorkers);
+        Task task = taskGenerator.generateTask();
+        cout << "Tasks Execution: Task " << task.taskName << " is being executed" << endl;
+        cout << "Curr Rain Status: " << isRaining << endl;
+
+        cout << "Child process created" << endl;
+        pid_t pid = fork();
+
+        if (pid == 0)
+        {
+            cout << "Child process started" << endl;
+
+            close(parentToChild[1]);
+            close(childToParent[0]);
+
+            pthread_t thread;
+            pthread_create(&thread, NULL, execution, &task);
+
+            pthread_join(thread, NULL);
+
+            cout << "Child process ended" << endl;
+            exit(0);
+        }
+        else if (pid > 0)
+        {
+            cout << "Parent process started" << endl;
+
+            close(parentToChild[0]);
+            close(childToParent[1]);
+
+            cout << "1Rain written: " << isRaining << endl;
+            write(parentToChild[1], &isRaining, sizeof(isRaining));
+            int time;
+            cout << "Parent process waiting for time" << endl;
+            while (read(childToParent[0], &time, sizeof(time)) && time > 0)
+            {
+
+                cout << "Rain written: " << isRaining << endl;
+                write(parentToChild[1], &isRaining, sizeof(isRaining));
+            }
+
+            cout << "Enuf reading" << endl;
+            wait(NULL);
+            cout << "Enuf waiting" << endl;
+
+            if (time < 0)
+            {
+                time *= -1;
+                task.time = time;
+                cout << "Task " << task.taskName << " interrupted! Time remaining: " << task.time << endl;
+                tasksScheduler.scheduleTask(task);
+            }
+            else
+            {
+                cout << "Task " << task.taskName << " completed!" << endl;
+                // release workers
+
+                for (int i = 0; i < task.numWorkers; i++)
+                {
+                    Worker worker = getWorkingWorker(task.assignedWorkers[i]);
+                    worker.fatigue += 20;
+                    backupWorkers.push_back(worker);
+                }
+            }
+        }
+        else
+        {
+            cout << "Error" << endl;
+        }
+
+        close(parentToChild[0]);
+        close(parentToChild[1]);
+        close(childToParent[0]);
+        close(childToParent[1]);
     }
     pthread_exit(NULL);
 }
@@ -136,18 +267,22 @@ void *tasksExecution(void *arg)
 void *checkRunning(void *arg)
 {
     int runningFifoFd = open(runningFifoPath, O_RDONLY | O_NONBLOCK); // Open pipe for reading in non-blocking mode
-    int rainingFifoFd = open(rainingFifoPath, O_RDONLY | O_NONBLOCK); 
+    int rainingFifoFd = open(rainingFifoPath, O_RDONLY | O_NONBLOCK);
 
-    while (isRunning)  {
+    while (isRunning)
+    {
         ssize_t bytesRead = read(runningFifoFd, &isRunning, sizeof(isRunning));
         ssize_t bytesRead2 = read(rainingFifoFd, &isRaining, sizeof(isRaining));
 
-        if (bytesRead == -1 || bytesRead2 == -1) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        if (bytesRead == -1 || bytesRead2 == -1)
+        {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            {
                 // No data was read from the FIFO, so continue with the next iteration of the loop
                 continue;
             }
-            else {   
+            else
+            {
                 perror("ERROR! "); // Print the error message specified by errno
                 break;
             }
@@ -160,7 +295,7 @@ void *checkRunning(void *arg)
         // }
     }
 
-    cout<<"Recieved instruction to halt program, closing now "<<endl;
+    cout << "Recieved instruction to halt program, closing now " << endl;
     close(runningFifoFd);
     pthread_exit(NULL);
 }
@@ -213,23 +348,41 @@ int main()
 {
     srand(time(NULL));
 
-    cout<<"Generating workers"<<endl;
-    for(int i=0;i<50;i++) {
-        idleWorkers.push_back(WorkerGenerator::generateWorker());
+    cout << "Generating workers" << endl;
+    for (int i = 0; i < 25; i++)
+    {
+        idleWorkers.push_back(workerGenerator.generateWorker());
+    }
+
+    for (int i = 0; i < 25; i++)
+    {
+        backupWorkers.push_back(workerGenerator.generateWorker());
     }
     updateWorkersLists();
 
-    pthread_t supply, degrade, createTask, executeTasks, checkRunningStatus;
+    const int EXECUTERS = 1; // number of threads for executing tasks
+    pthread_t supply, degrade, createTask, executeTasks[EXECUTERS], checkRunningStatus;
+    pthread_create(&checkRunningStatus, NULL, checkRunning, NULL);
+
     pthread_create(&supply, NULL, supplyFactory, NULL);
     pthread_create(&degrade, NULL, materialDegredation, NULL);
     // pthread_create(&createTask, NULL, taskCreation, NULL);
-    // pthread_create(&executeTasks, NULL, tasksExecution, NULL);
-    pthread_create(&checkRunningStatus, NULL, checkRunning, NULL); //check both running and raining here 
+
+    for (int i = 0; i < EXECUTERS; i++)
+    { // create threads for executing tasks
+        pthread_create(&executeTasks[i], NULL, tasksExecution, NULL);
+    }
 
     pthread_join(supply, NULL);
     pthread_join(degrade, NULL);
+    pthread_join(createTask, NULL);
 
-    //remove fifo
+    for (int i = 0; i < EXECUTERS; i++)
+    {
+        pthread_join(executeTasks[i], NULL);
+    }
+
+    // remove fifo
     unlink(runningFifoPath);
     unlink(rainingFifoPath);
 
