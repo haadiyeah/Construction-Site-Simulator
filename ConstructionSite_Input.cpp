@@ -1,15 +1,33 @@
 #include <iostream>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/types.h>
+
+bool isRunning = true;
+bool isRaining = false;
+const char * runningFifoPath = "/tmp/isRunningFifo";
+const char * rainingFifoPath = "/tmp/isRainingFifo";
+
+
 using namespace std;
 
 int main() {
-    int choice=0;
+    int choice=-1;
+    // Create the named pipe
+
+    mkfifo(runningFifoPath, 0666);
+    mkfifo(rainingFifoPath, 0666);
+
     do {
     cout<<" --- Construction Site --- "<<endl;
     cout<<" Please select an option from the menu! "<<endl;
     cout<<" 1. Worker sickness/Leave \n 2. Worker death \n 3. Worker promotion "<<
-         "\n 4. Weather condition \n 0. Stop program "<<endl;
+         "\n 4. Update Weather condition \n 0. Stop program "<<endl;
+    
+    cin>>choice;
 
-    while(!cin>>choice && (choice < 0 || choice > 4)) {
+    while( (choice < 0 || choice > 4)) {
         cout<<"Please enter a valid choice!"<<endl;
         cin.clear();
         cin.ignore(100,'\n');
@@ -35,12 +53,27 @@ int main() {
             break;
         }
         case 4: {
-            cout<<"Weather condition"<<endl;
+            int ans;
+            cout<<"Weather condition: Is it raining? (Enter 1=Yes, 0=No)"<<endl;
+            cin>>ans;
+            if(ans == 1) {
+                cout<<"OK, It's raining."<<endl;
+                isRaining = true;
+            } else {
+                isRaining = false;
+            }
+            int fifoFd = open(rainingFifoPath, O_WRONLY | O_NONBLOCK); // Open pipe for writing in non-blocking mode
+            write(fifoFd, &isRaining, sizeof(isRaining));
+            close(fifoFd);
+            sleep(1);
             break;
         }
         case 0: {
             cout<<"Stopping program..."<<endl;
-            //isRunning becomes false, use pipes for this purpose.
+            isRunning = false;
+            int fifoFd = open(runningFifoPath, O_WRONLY | O_NONBLOCK); // Open pipe for writing in non-blocking mode
+            write(fifoFd, &isRunning, sizeof(isRunning));
+            sleep(1); //delay needed else the other program is unable to read correctly
             break;
         }
         default: {
@@ -49,4 +82,8 @@ int main() {
         }
     }
     } while (choice != 0);
+
+    cout<<"Program stopped!"<<endl;
+    unlink(runningFifoPath); //note: removes the name of the FIFO from the filesystem. It doesn't actually destroy the FIFO until all processes have closed it.
+    unlink(rainingFifoPath);
 }

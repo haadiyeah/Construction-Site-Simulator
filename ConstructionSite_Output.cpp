@@ -4,6 +4,11 @@
 #include <pthread.h>
 #include <queue>
 #include <vector>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
 #include "Resources.h"
 #include "Tasks.h"
 #include "Workers.h"
@@ -12,6 +17,9 @@
 using namespace std;
 
 bool isRunning = true;
+bool isRaining = false;
+const char * runningFifoPath = "/tmp/isRunningFifo";
+const char * rainingFifoPath = "/tmp/isRainingFifo";
 const int MAX_CAPACITY = 50; // max capacity for each type of resource
 TaskGenerator taskGenerator;
 TasksScheduler tasksScheduler;
@@ -121,23 +129,59 @@ void *tasksExecution(void *arg)
     pthread_exit(NULL);
 }
 
+void *checkRunning(void *arg)
+{
+    int runningFifoFd = open(runningFifoPath, O_RDONLY | O_NONBLOCK); // Open pipe for reading in non-blocking mode
+    int rainingFifoFd = open(rainingFifoPath, O_RDONLY | O_NONBLOCK); 
+
+    while (isRunning)  {
+        ssize_t bytesRead = read(runningFifoFd, &isRunning, sizeof(isRunning));
+        ssize_t bytesRead2 = read(rainingFifoFd, &isRaining, sizeof(isRaining));
+
+        if (bytesRead == -1 || bytesRead2 == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // No data was read from the FIFO, so continue with the next iteration of the loop
+                continue;
+            }
+            else {   
+                perror("ERROR! "); // Print the error message specified by errno
+                break;
+            }
+        }
+
+        // if(isRaining) {
+        //     cout<<"Omg! It's raining!!! 🌧"<<endl;
+        // } else {
+        //     cout<<"Yay! It's not raining!"<<endl;
+        // }
+    }
+
+    cout<<"Recieved instruction to halt program, closing now "<<endl;
+    close(runningFifoFd);
+    pthread_exit(NULL);
+}
+
 int main()
 {
     srand(time(NULL));
-    cout<<"Main"<<endl;
-    cout<<"Generating workers";
+    cout<<"Generating workers"<<endl;
     for(int i=0;i<50;i++) {
         idleWorkers.push_back(WorkerGenerator::generateWorker());
     }
 
-    pthread_t supply, degrade, createTask, executeTasks;
+    pthread_t supply, degrade, createTask, executeTasks, checkRunningStatus;
     pthread_create(&supply, NULL, supplyFactory, NULL);
     pthread_create(&degrade, NULL, materialDegredation, NULL);
-    pthread_create(&createTask, NULL, taskCreation, NULL);
-    pthread_create(&executeTasks, NULL, tasksExecution, NULL);
+    // pthread_create(&createTask, NULL, taskCreation, NULL);
+    // pthread_create(&executeTasks, NULL, tasksExecution, NULL);
+    pthread_create(&checkRunningStatus, NULL, checkRunning, NULL);
 
     pthread_join(supply, NULL);
     pthread_join(degrade, NULL);
+
+    //remove fifo
+    unlink(runningFifoPath);
+    unlink(rainingFifoPath);
 
     return 0;
 }
