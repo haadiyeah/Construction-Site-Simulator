@@ -27,7 +27,7 @@ vector<Worker> workingWorkers;
 
 
 void getWorkersLists() {
-    char buffer[4096];
+    char buffer[512];
 
     //-----------------------Idle workers----------------------------------
     int idleWorkersFifoFd = open(idleWorkersFifoPath, O_RDONLY | O_NONBLOCK ); // Open pipe for reading
@@ -81,7 +81,7 @@ int main() {
     getWorkersLists();
 
     do {
-    cout<<" --- Welcome To Slave Simulator! --- "<<endl;
+    cout<<" --- Construction Site --- "<<endl;
     cout<<" Please select an option from the menu! "<<endl;
     cout<<" 1. View worker lists \n 2. Worker leave/sickness/death \n 3. Worker promotion/demotion "<<
          "\n 4. Update Weather condition \n 0. Stop program "<<endl;

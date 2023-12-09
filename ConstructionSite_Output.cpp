@@ -62,7 +62,7 @@ void *supplyFactory(void *arg)
                     break;
                 }
                 r.quality = 100;
-                // cout << "Supply factory: Produced 1 " << r.type << endl;
+                cout << "Supply factory: Produced 1 " << r.type << endl;
                 materials[i].push_back(r);
                 pthread_mutex_unlock(&materialsMutex[i]);
             }
@@ -85,7 +85,7 @@ void *materialDegredation(void *arg)
                 Resource r = materials[i].front();
                 // materials[i].pop_back(); // remove the first pushed resource
                 r.quality -= 10;
-                // cout << "Material Degredation: " << r.type << " quality is " << r.quality << endl;
+                cout << "Material Degredation: " << r.type << " quality is " << r.quality << endl;
                 if (r.quality > 0)
                 {
                     // materials[i].push_back(r);
@@ -136,9 +136,6 @@ void *execution(void *arg)
 
     bool rain;
 
-    // read(parentToChild[0], &rain, sizeof(rain));
-    // cout << "Rain: " << rain << endl;
-
     while (read(parentToChild[0], &rain, sizeof(rain)))
     {
         cout << "in thread Execution: Waiting for rain status" << endl;
@@ -175,6 +172,8 @@ Worker getWorkingWorker(int id)
             return workingWorkers[i];
         }
     }
+
+    
 }
 
 void *tasksExecution(void *arg) //
@@ -189,15 +188,11 @@ void *tasksExecution(void *arg) //
         // Task task = tasksScheduler.getTask(isRaining, materials, idleWorkers);
         Task task = taskGenerator.generateTask();
         cout << "Tasks Execution: Task " << task.taskName << " is being executed" << endl;
-        cout << "Curr Rain Status: " << isRaining << endl;
 
-        cout << "Child process created" << endl;
         pid_t pid = fork();
 
         if (pid == 0)
         {
-            cout << "Child process started" << endl;
-
             close(parentToChild[1]);
             close(childToParent[0]);
 
@@ -206,30 +201,21 @@ void *tasksExecution(void *arg) //
 
             pthread_join(thread, NULL);
 
-            cout << "Child process ended" << endl;
             exit(0);
         }
         else if (pid > 0)
         {
-            cout << "Parent process started" << endl;
-
             close(parentToChild[0]);
             close(childToParent[1]);
 
-            cout << "1Rain written: " << isRaining << endl;
             write(parentToChild[1], &isRaining, sizeof(isRaining));
             int time;
-            cout << "Parent process waiting for time" << endl;
             while (read(childToParent[0], &time, sizeof(time)) && time > 0)
             {
-
-                cout << "Rain written: " << isRaining << endl;
                 write(parentToChild[1], &isRaining, sizeof(isRaining));
             }
 
-            cout << "Enuf reading" << endl;
             wait(NULL);
-            cout << "Enuf waiting" << endl;
 
             if (time < 0)
             {
