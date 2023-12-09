@@ -32,6 +32,7 @@ int main() {
         case 3: {
             cout<<"Worker promotion"<<endl;
             //increase worker skill level and update queues accordingly
+            //worker would have to be reassigned 
             break;
         }
         case 4: {
@@ -40,6 +41,7 @@ int main() {
         }
         case 0: {
             cout<<"Stopping program..."<<endl;
+            //isRunning becomes false, use pipes for this purpose.
             break;
         }
         default: {

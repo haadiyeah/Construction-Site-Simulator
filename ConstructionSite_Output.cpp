@@ -73,14 +73,14 @@ void* materialDegredation(void* arg) { // degrades the first pushed resource of 
                 pthread_mutex_unlock(&materialsMutex[i]);
             }
         }
-        sleep(8); //degredation after every 10 seconds
+        sleep(8); //degredation after every 8 seconds
     }
     pthread_exit(NULL);
 }
 
 int main() {
-
-cout<<"Main"<<endl;
+    srand(time(NULL));
+    cout<<"Main"<<endl;
     pthread_t supply, degrade;
     pthread_create(&supply, NULL, supplyFactory, NULL);
     pthread_create(&degrade, NULL, materialDegredation, NULL);
