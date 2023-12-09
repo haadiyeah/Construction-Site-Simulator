@@ -130,7 +130,7 @@ int main()
         idleWorkers.push_back(WorkerGenerator::generateWorker());
     }
 
-    pthread_t supply, degrade;
+    pthread_t supply, degrade, createTask, executeTasks;
     pthread_create(&supply, NULL, supplyFactory, NULL);
     pthread_create(&degrade, NULL, materialDegredation, NULL);
     pthread_create(&createTask, NULL, taskCreation, NULL);
