@@ -11,6 +11,7 @@ struct Task
     int time;                   // number to sleep
     vector<Resource> resources; // resources required for the task
     int numWorkers;             // number of workers required to implement this task
+    bool indoor;               // true if task is indoor, false if outdoor
 };
 
 class TaskGenerator
@@ -43,28 +44,39 @@ private:
 public:
     TaskGenerator()
     {
-        string lowPrioTaskNames[3] = {"Non-critical task", "Decorating", "Painting"};
-        string medPrioTaskNames[3] = {"Scaffolding", "Bricklaying", "Cement mixing"};
-        string highPrioTaskNames[3] = {"Urgent repairs", "Foundation laying", "Critical structural work"};
+        //u can change these task names idk anything about construction
+        string lowPrioTaskNames[3] = {"Landscaping", "Decorating", "Painting"};
+        bool lowPrioTaskIndoor[3] = {false, true, true};
+
+        string medPrioTaskNames[3] = {"Scaffolding", "Bricklaying", "Cement Mixing"};
+        bool medPrioTaskIndoor[3] = {false, true, false};
+
+        //TODO add urgent repair
+        string highPrioTaskNames[3] = {"Roofing", "Foundation Laying", "Structural Framing"};
+        bool highPrioTaskIndoor[3] = {false, true, false};
+
         for (int i = 0; i < 3; i++)
         {
-            lowPrioTasks[i].taskName = lowPrioTaskNames[i];
-            lowPrioTasks[i].priority = 3;
-            initTask(lowPrioTasks[i]);
-
             highPrioTasks[i].taskName = highPrioTaskNames[i];
             highPrioTasks[i].priority = 1;
+            highPrioTasks[i].indoor = highPrioTaskIndoor[i];
             initTask(highPrioTasks[i]);
 
             medPrioTasks[i].taskName = medPrioTaskNames[i];
             medPrioTasks[i].priority = 2;
+            medPrioTasks[i].indoor = medPrioTaskIndoor[i];
             initTask(medPrioTasks[i]);
+
+            lowPrioTasks[i].taskName = lowPrioTaskNames[i];
+            lowPrioTasks[i].priority = 3;
+            lowPrioTasks[i].indoor = lowPrioTaskIndoor[i];
+            initTask(lowPrioTasks[i]);
         }
     }
 
     Task generateTask(int priority = 0)
     { // priority parameter is optional, if invalid passed it will randomize.
-        if (priority == 0 || (priority < 1 || priority > 3))
+        if ((priority < 1 || priority > 3))
         {
             priority = rand() % 3 + 1;
         }

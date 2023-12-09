@@ -87,7 +87,7 @@ void *materialDegredation(void *arg)
                 pthread_mutex_unlock(&materialsMutex[i]);
             }
         }
-        sleep(8); // degredation after every 10 seconds
+        sleep(8); // degredation after every 8 seconds
     }
     pthread_exit(NULL);
 }
@@ -111,7 +111,7 @@ void *tasksExecution(void *arg)
     {
         Task task = tasksScheduler.getTask();
         cout << "Task Execution: Task " << task.taskName << " started" << endl;
-        //pthread_create(&executeTask, NULL, taskExecution, NULL);
+        // pthread_create(&executeTask, NULL, taskExecution, NULL);
         sleep(task.time);
         cout << "Task Execution: Task " << task.taskName << " finished" << endl;
     }
@@ -120,13 +120,14 @@ void *tasksExecution(void *arg)
 
 int main()
 {
+    srand(time(NULL));
+
     cout << "Main" << endl;
     pthread_t supply, degrade, createTask, executeTasks;
     pthread_create(&supply, NULL, supplyFactory, NULL);
     pthread_create(&degrade, NULL, materialDegredation, NULL);
     pthread_create(&createTask, NULL, taskCreation, NULL);
     pthread_create(&executeTasks, NULL, tasksExecution, NULL);
-
 
     pthread_join(supply, NULL);
     pthread_join(degrade, NULL);

@@ -7,12 +7,6 @@ struct Resource {
     float quality; //for degradation; initially 100%
 };
 
-struct Worker {
-    int workerId;
-    string skill; //bricklayer, cement mixer, scaffolder
-    int skillLevel; //1 (High), 2 (Medium), 3 (Low)
-    
-}; 
 
 //queue of bricks 
 //queue of cement
