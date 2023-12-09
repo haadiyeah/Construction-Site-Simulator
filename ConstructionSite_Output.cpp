@@ -353,7 +353,6 @@ int main()
     {
         idleWorkers.push_back(workerGenerator.generateWorker());
     }
-
     for (int i = 0; i < 25; i++)
     {
         backupWorkers.push_back(workerGenerator.generateWorker());
