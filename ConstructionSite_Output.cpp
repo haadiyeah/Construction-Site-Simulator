@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <cstring>
 
 #include "Resources.h"
 #include "Tasks.h"
@@ -20,6 +21,9 @@ bool isRunning = true;
 bool isRaining = false;
 const char * runningFifoPath = "/tmp/isRunningFifo";
 const char * rainingFifoPath = "/tmp/isRainingFifo";
+const char * idleWorkersFifoPath = "/tmp/idleWorkersFifo";
+const char * workingWorkersFifoPath = "/tmp/workingWorkersFifo";
+
 const int MAX_CAPACITY = 50; // max capacity for each type of resource
 TaskGenerator taskGenerator;
 TasksScheduler tasksScheduler;
@@ -161,20 +165,66 @@ void *checkRunning(void *arg)
     pthread_exit(NULL);
 }
 
+//function to update worker lists in pipe in order to be read by the other process
+void updateWorkersLists(){
+    int idleWorkersFifoFd = open(idleWorkersFifoPath, O_WRONLY | O_NONBLOCK); // Open pipe for writing in non-blocking mode
+    if (idleWorkersFifoFd == -1) {
+        cerr << "Failed to open " << idleWorkersFifoPath << ": " << strerror(errno) << endl;
+       // return;
+    }
+
+    int workingWorkersFifoFd = open(workingWorkersFifoPath, O_WRONLY | O_NONBLOCK);
+    if (workingWorkersFifoFd == -1) {
+        cerr << "Failed to open " << workingWorkersFifoPath << ": " << strerror(errno) << endl;
+       // return;
+    }
+
+    vector<string> serializedIdleWorkers = serializeWorkers(idleWorkers);
+    vector<string> serializedWorkingWorkers = serializeWorkers(workingWorkers);
+
+    ostringstream ossIdle;
+    ostringstream ossWorking;
+    for (const string& serializedWorker : serializedIdleWorkers) {
+        ossIdle << serializedWorker << "\n";
+    }
+    for(const string& serializedWorker : serializedWorkingWorkers){
+        ossWorking << serializedWorker << "\n";
+    }
+
+    string idleOutput = ossIdle.str();
+    string workingOutput = ossWorking.str();
+
+    ssize_t written = write(idleWorkersFifoFd, idleOutput.c_str(), idleOutput.length());
+    if (written == -1) {
+        cerr << "Failed to write to " << idleWorkersFifoPath << ": " << strerror(errno) << endl;
+    } else if (written < idleOutput.length()) {
+        cerr << "Buffer too small when writing to " << idleWorkersFifoPath << endl;
+    }
+
+    ssize_t written2 = write(workingWorkersFifoFd, workingOutput.c_str(), workingOutput.length());
+    if (written2 == -1) {
+        cerr << "Failed to write to " << workingWorkersFifoPath << ": " << strerror(errno) << endl;
+    } else if (written2 < workingOutput.length()) {
+        cerr << "Buffer too small when writing to " << workingWorkersFifoPath << endl;
+    }
+}
+
 int main()
 {
     srand(time(NULL));
+
     cout<<"Generating workers"<<endl;
     for(int i=0;i<50;i++) {
         idleWorkers.push_back(WorkerGenerator::generateWorker());
     }
+    updateWorkersLists();
 
     pthread_t supply, degrade, createTask, executeTasks, checkRunningStatus;
     pthread_create(&supply, NULL, supplyFactory, NULL);
     pthread_create(&degrade, NULL, materialDegredation, NULL);
     // pthread_create(&createTask, NULL, taskCreation, NULL);
     // pthread_create(&executeTasks, NULL, tasksExecution, NULL);
-    pthread_create(&checkRunningStatus, NULL, checkRunning, NULL);
+    pthread_create(&checkRunningStatus, NULL, checkRunning, NULL); //check both running and raining here 
 
     pthread_join(supply, NULL);
     pthread_join(degrade, NULL);

@@ -3,14 +3,73 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/types.h>
+#include <vector>
+#include <errno.h>
+#include <string.h>
+#include <sstream> // Include the missing header file
+#include <algorithm>
+#include <cstring>
+
+#include "Workers.h"
+#include "Utils.h"
+
 
 bool isRunning = true;
 bool isRaining = false;
 const char * runningFifoPath = "/tmp/isRunningFifo";
 const char * rainingFifoPath = "/tmp/isRainingFifo";
+const char * idleWorkersFifoPath = "/tmp/idleWorkersFifo";
+const char * workingWorkersFifoPath = "/tmp/workingWorkersFifo";
 
+vector<Worker> idleWorkers;
+vector<Worker> workingWorkers;
 
 using namespace std;
+
+
+void getWorkersLists() {
+    char buffer[4096];
+
+    //-----------------------Idle workers----------------------------------
+    int idleWorkersFifoFd = open(idleWorkersFifoPath, O_RDONLY | O_NONBLOCK ); // Open pipe for reading
+    if (idleWorkersFifoFd == -1) {
+        cerr << "Failed to open " << idleWorkersFifoPath << ": " << strerror(errno) << endl;
+        return;
+    }
+
+    ssize_t bytesRead = read(idleWorkersFifoFd, buffer, sizeof(buffer) - 1);
+    if (bytesRead == -1) {
+        cerr << "Failed to read from " << idleWorkersFifoPath << ": " << strerror(errno) << endl;
+        return;
+    }
+    
+    vector<string> serializedIdleWorkers = split(string(buffer), '\n');
+    buffer[bytesRead] = '\0'; // Null-terminate the buffer
+    if (bytesRead == sizeof(buffer) - 1 && buffer[bytesRead - 1] != '\0') {
+        cerr << "Buffer too small when reading from " << idleWorkersFifoPath << endl;
+    }
+    idleWorkers = deserializeWorkers(serializedIdleWorkers);
+  
+    //-----------------------Working workers----------------------------------
+    int workingWorkersFifoFd = open(workingWorkersFifoPath, O_RDONLY| O_NONBLOCK);
+    if (workingWorkersFifoFd == -1) {
+        cerr << "Failed to open " << workingWorkersFifoPath << ": " << strerror(errno) << endl;
+        return;
+    }
+       ssize_t bytesRead2 = read(workingWorkersFifoFd, buffer, sizeof(buffer) - 1);
+    if (bytesRead2 == -1) {
+        cerr << "Failed to read from " << workingWorkersFifoPath << ": " << strerror(errno) << endl;
+        return;
+    }
+
+    vector<string> serializedWorkingWorkers = split(string(buffer), '\n');
+    buffer[bytesRead2] = '\0'; // Null-terminate the buffer
+    if (bytesRead2 == sizeof(buffer) - 1 && buffer[bytesRead2 - 1] != '\0') {
+        cerr << "Buffer too small when reading from " << workingWorkersFifoPath << endl;
+    }
+    workingWorkers = deserializeWorkers(serializedWorkingWorkers);
+}
+
 
 int main() {
     int choice=-1;
@@ -18,11 +77,14 @@ int main() {
 
     mkfifo(runningFifoPath, 0666);
     mkfifo(rainingFifoPath, 0666);
+    mkfifo(idleWorkersFifoPath, 0666);
+    mkfifo(workingWorkersFifoPath, 0666);
+    getWorkersLists();
 
     do {
     cout<<" --- Construction Site --- "<<endl;
     cout<<" Please select an option from the menu! "<<endl;
-    cout<<" 1. Worker sickness/Leave \n 2. Worker death \n 3. Worker promotion "<<
+    cout<<" 1. View worker lists \n 2. Worker leave/sickness/death \n 3. Worker promotion/demotion "<<
          "\n 4. Update Weather condition \n 0. Stop program "<<endl;
     
     cin>>choice;
@@ -35,15 +97,26 @@ int main() {
 
     switch(choice) {
         case 1: {
-            cout<<"Here are the worker queues"<<endl;
-            //display which worker is working on tasks, which are idle etc
-            //Select worker to make sick/leave
-            //update accordingly, make sure worker comes back after certain amount of time
+            cout<<"Worker Lists"<<endl;
+            getWorkersLists();
+
+            cout<<"Idle workers:\n------------";
+            for(int i=0; i<idleWorkers.size(); i++) {
+                cout<<"\nWorker id: "<<idleWorkers[i].workerId<<endl;
+            }
+            cout<<"------------"<<endl;
+            cout<<"Working workers:\n------------";
+            for(int i=0; i<workingWorkers.size(); i++) {
+                cout<<"\nWorker id: "<<workingWorkers[i].workerId<<endl;
+            }
+            cout<<"------------"<<endl;
             break;
         }
         case 2: {
             cout<<"Worker death"<<endl;
-            //similar as above but worker gone forever
+            //if leave/sickness, select worker to make sick/leave
+            //update accordingly, make sure worker comes back after certain amount of time
+            //if death, similar as above but worker gone forever
             break;
         }
         case 3: {

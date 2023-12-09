@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <sstream>
 using namespace std;
 
 struct Worker {
@@ -41,3 +42,49 @@ int WorkerGenerator::workerId = 0;
 string WorkerGenerator::skillSets[3][3] = { { "Landscaping", "Scaffolding", "Roofing"}, 
                                             {"Decorating", "Bricklaying", "Foundation Laying"}, 
                                             {"Painting", "Cement Mixing", "Structural Framing"} };
+
+
+
+
+//------------Functions to serialize/deserialize worker objects-----------------
+//serialize worker object to read/write to pipe
+string serializeWorker(const Worker& worker) {
+    ostringstream oss;
+    oss << worker.workerId << " "
+        << worker.skillLevel << " "
+        << worker.fatigue << " "
+        << worker.skillSet.size() << " ";
+    for (const string& skill : worker.skillSet) {
+        oss << skill << " ";
+    }
+    return oss.str();
+}
+
+vector<string> serializeWorkers(const vector<Worker>& workers) {
+    vector<string> serializedWorkers;
+    for (const Worker& worker : workers) {
+        serializedWorkers.push_back(serializeWorker(worker));
+    }
+    return serializedWorkers;
+}
+
+
+Worker deserializeWorker(const string& serializedWorker) {
+    istringstream iss(serializedWorker);
+    Worker worker;
+    size_t numSkills;
+    iss >> worker.workerId >> worker.skillLevel >> worker.fatigue >> numSkills;
+    worker.skillSet.resize(numSkills);
+    for (size_t i = 0; i < numSkills; ++i) {
+        iss >> worker.skillSet[i];
+    }
+    return worker;
+}
+
+vector<Worker> deserializeWorkers(const vector<string>& serializedWorkers) {
+    vector<Worker> workers;
+    for (const string& serializedWorker : serializedWorkers) {
+        workers.push_back(deserializeWorker(serializedWorker));
+    }
+    return workers;
+}
