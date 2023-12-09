@@ -6,6 +6,7 @@
 #include <vector>
 #include "Resources.h"
 #include "Tasks.h"
+#include "Workers.h"
 
 
 using namespace std;
@@ -15,6 +16,8 @@ const int MAX_CAPACITY =50; //max capacity for each type of resource
 
 pthread_mutex_t materialsMutex[3] = {PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER};
 vector<vector<Resource>> materials(3);  // 0 - bricks, 1 - cement, 2 - tools
+vector<Worker> idleWorkers;
+vector<Worker> workingWorkers;
 
 void* supplyFactory(void* arg) {
     while (isRunning) {
@@ -81,6 +84,11 @@ void* materialDegredation(void* arg) { // degrades the first pushed resource of 
 int main() {
     srand(time(NULL));
     cout<<"Main"<<endl;
+    cout<<"Generating workers";
+    for(int i=0;i<50;i++) {
+        idleWorkers.push_back(WorkerGenerator::generateWorker());
+    }
+
     pthread_t supply, degrade;
     pthread_create(&supply, NULL, supplyFactory, NULL);
     pthread_create(&degrade, NULL, materialDegredation, NULL);
