@@ -7,14 +7,6 @@ struct Resource {
     float quality; //for degradation; initially 100%
 };
 
-struct Task{
-    string taskName;
-    int priority; //1 (High), 2 (Medium), 3 (Low)
-    int time; //number to sleep 
-    vector<Resource> resources; //resources required for the task
-
-};
-
 struct Worker {
     int workerId;
     string skill; //bricklayer, cement mixer, scaffolder

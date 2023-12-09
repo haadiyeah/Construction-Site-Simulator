@@ -1,17 +1,17 @@
 #include <iostream>
 #include <string>
 #include <unistd.h>
-#include <sys/wait.h>
 #include <pthread.h>
 #include <queue>
 #include <vector>
 #include "Resources.h"
+#include "Tasks.h"
 
 
 using namespace std;
 
 bool isRunning = true;
-const int MAX_CAPACITY =50; //max capacity for each type of resource
+const int MAX_CAPACITY = 50; //max capacity for each type of resource
 pthread_mutex_t bricksMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t cementMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t toolsMutex = PTHREAD_MUTEX_INITIALIZER;
@@ -19,6 +19,8 @@ pthread_mutex_t toolsMutex = PTHREAD_MUTEX_INITIALIZER;
 queue<Resource> bricks;
 queue<Resource> cement;
 queue<Resource> tools;
+
+queue<Task> tasks;
 
 void* supplyFactory(void* arg) {
     while (isRunning) {
@@ -102,11 +104,13 @@ void* materialDegredation(void* arg) {
 int main() {
 
 cout<<"Main"<<endl;
-    pthread_t tid, tid2;
-    pthread_create(&tid, NULL, supplyFactory, NULL);
-    pthread_create(&tid2, NULL, materialDegredation, NULL);
+    pthread_t supplyFactoryThread;
+    pthread_t materialDegredationThread;
+    pthread_create(&supplyFactoryThread, NULL, supplyFactory, NULL);
+    pthread_create(&materialDegredationThread, NULL, materialDegredation, NULL);
 
-    pthread_join(tid, NULL);
+    pthread_join(supplyFactoryThread, NULL);
+    pthread_join(materialDegredationThread, NULL);
 
 
     return 0;
