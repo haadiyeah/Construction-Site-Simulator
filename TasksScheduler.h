@@ -191,6 +191,6 @@ public:
 
         // if no feasible task is found return an "InvalidTask" (most likely case when -- 1. Rain 2. All outdoor tasks)
         cout << "No Current Feasible Task\n";
-        return Task{"InvalidTask", 0, 0, {}, 0, false};
+        return Task{"InvalidTask", 0, 0, {}, {}, 0, false};
     }
 };

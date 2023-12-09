@@ -81,7 +81,7 @@ int main() {
     getWorkersLists();
 
     do {
-    cout<<" --- Construction Site --- "<<endl;
+    cout<<" --- Welcome To Slave Simulator! --- "<<endl;
     cout<<" Please select an option from the menu! "<<endl;
     cout<<" 1. View worker lists \n 2. Worker leave/sickness/death \n 3. Worker promotion/demotion "<<
          "\n 4. Update Weather condition \n 0. Stop program "<<endl;
