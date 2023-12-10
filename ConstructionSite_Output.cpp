@@ -23,7 +23,7 @@ bool isRaining = false;
 int parentToChild[2];
 int childToParent[2];
 const char *runningFifoPath = "/tmp/isRunningFifo";
-const char *rainingFifoPath = "/tmp/isRainingFifo";
+//const char *rainingFifoPath = "/tmp/isRainingFifo";
 const char *idleWorkersFifoPath = "/tmp/idleWorkersFifo";
 const char *workingWorkersFifoPath = "/tmp/workingWorkersFifo";
 const char *workerLeaveAlert = "/tmp/workerLeaveAlert";
@@ -264,6 +264,7 @@ void *tasksExecution(void *arg) //
         cout << "Tasks Execution: Pipes created" << endl;
 
         Task task = tasksScheduler.getTask(isRaining, materials, idleWorkers, workingWorkers, backupWorkers);
+        updateWorkersLists();
         cout << "Task got" << endl;
         // Task task = taskGenerator.generateTask();
         int initialTime = task.time;
@@ -316,7 +317,7 @@ void *tasksExecution(void *arg) //
                     cout << "Worker " << worker.workerId << " is now going to backup, with fatigue: " << worker.fatigue << endl;
                 }
 
-                tasksScheduler.scheduleTask(task);  // change to aadd to halted tasks
+                tasksScheduler.haltTask(task);  // change to aadd to halted tasks
             }
             else
             {
@@ -325,6 +326,7 @@ void *tasksExecution(void *arg) //
                 cout << "Task " << task.taskName << " completed!" << endl;
                 // release workers
 
+                cout << "Num Workers released: " << task.assignedWorkers.size() << endl;
                 for (int i = 0; i < task.assignedWorkers.size(); i++)
                 {
                     pthread_mutex_trylock(&backupWorkerMutex);
@@ -335,6 +337,7 @@ void *tasksExecution(void *arg) //
 
                     cout << "Worker " << worker.workerId << " is now going to backup, with fatigue: " << worker.fatigue << endl;
                 }
+                updateWorkersLists();
             }
         }
         else

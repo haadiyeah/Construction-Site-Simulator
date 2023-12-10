@@ -14,12 +14,13 @@ struct Worker {
 class WorkerGenerator {
     private:
     static int workerId;
+    static int skillLvl;
     static string skillSets[3][3];
    
     public:
     static Worker generateWorker(int skillLevel=0) {
         if(skillLevel<1 || skillLevel>3) {
-            skillLevel = rand() % 3 + 1;
+            skillLevel = (rand()%2)?rand() % 3 + 1: 1;  // 2/3 chance of generating a high skill worker
         }
 
         Worker w;
@@ -36,11 +37,21 @@ class WorkerGenerator {
         return w;
     }
 
+    static vector<Worker> generateDefaultWorkers() {
+        vector<Worker> workers;
+        for(int i=0;i<3;i++) {
+            for(int j=0;j<3;j++) {
+                
+            }
+        }
+        return workers;
+    }
+
 };
 
 
 //each skillset has 3 skills, one of each priority type.
-int WorkerGenerator::workerId = 0;
+int WorkerGenerator::workerId = 1;
 string WorkerGenerator::skillSets[3][3] = { { "Landscaping", "Scaffolding", "Roofing"}, 
                                             {"Decorating", "Bricklaying", "Foundation-Laying"}, 
                                             {"Painting", "Cement-Mixing", "Structural-Framing"} };

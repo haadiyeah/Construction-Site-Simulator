@@ -41,7 +41,7 @@ private:
             r.quality = 100;
             t.resources.push_back(r);
         }
-        t.numWorkers = rand() % 5 + 1;
+        t.numWorkers = rand() % 3 + 1;
     }
 
 public:

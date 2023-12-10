@@ -14,6 +14,12 @@ using namespace std;
 
 pthread_mutex_t queueRotationMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t idleWorkerMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t highPriorityMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mediumPriorityMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t lowPriorityMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t haltedTasksMutex = PTHREAD_MUTEX_INITIALIZER;
+const char *rainingFifoPath = "/tmp/isRainingFifo";
+
 
 class TasksScheduler
 {
@@ -55,7 +61,7 @@ public:
         }
     }
 
-    Task getTask(bool isRaining, vector<vector<Resource>> &availableMaterials, vector<Worker> &availableWorkers, vector<Worker> &activeWorkers, vector<Worker> &backupWorkers)
+    Task getTask(bool &isRaining, vector<vector<Resource>> &availableMaterials, vector<Worker> &availableWorkers, vector<Worker> &activeWorkers, vector<Worker> &backupWorkers)
     {
         cout << "Getting Task\n";
         /*
@@ -79,12 +85,12 @@ public:
         queueRotationTimer++;
         pthread_mutex_unlock(&queueRotationMutex);
 
-        Task task = getTaskFromQueue(currentQueue, isRaining, availableMaterials, availableWorkers, activeWorkers, backupWorkers);
+        Task task = getTaskFromQueue(currentQueue, queueIndex, isRaining, availableMaterials, availableWorkers, activeWorkers, backupWorkers);
         cout << "QUEUE Task: " << task.taskName << "\ttime: " << task.time << endl;
         return task;
     }
 
-    bool isTaskFeasible(Task &task, bool isRaining, const vector<vector<Resource>> &availableMaterials, vector<Worker> &availableWorkers, vector<Worker> &activeWorkers, vector<Worker> &backupWorkers)
+    bool isTaskFeasible(Task &task, bool &isRaining, const vector<vector<Resource>> &availableMaterials, vector<Worker> &availableWorkers, vector<Worker> &activeWorkers, vector<Worker> &backupWorkers)
     {
 
         bool feasibilityFlag = true;
@@ -131,18 +137,17 @@ public:
         // SSindex - Skill Set index
         pthread_mutex_trylock(&idleWorkerMutex);
         vector<int> workerIDS;
-        for (int SLindex = 0; SLindex < availableWorkers.size(); SLindex++)
+        for (int i = 0; i < availableWorkers.size(); i++)
         {
-            if (task.priority != availableWorkers[SLindex].skillLevel)
+            if (task.priority >= availableWorkers[i].skillLevel)
             {
-                for (int SSindex = 0; SSindex < availableWorkers[SLindex].skillSet.size(); SSindex++)
+                for (int j = 0; j < availableWorkers[i].skillSet.size(); j++)
                 {
-                    if (task.taskName == availableWorkers[SLindex].skillSet[SSindex])
+                    if (task.taskName == availableWorkers[i].skillSet[j])
                     {
                         AWCounter++;
-
                         // storing worker IDs that have been assigned to Task
-                        workerIDS.push_back(availableWorkers[SLindex].workerId);
+                        workerIDS.push_back(availableWorkers[i].workerId);
                     }
                 }
             }
@@ -157,7 +162,7 @@ public:
 
         // assinging idle workers to active workers
         pthread_mutex_trylock(&idleWorkerMutex);
-        for (int i = 0; i < workerIDS.size(); i++)
+        for (int i = 0; i < task.numWorkers; i++)
         {
             task.assignedWorkers.push_back(workerIDS[i]);
             for (auto iterator = availableWorkers.begin(); iterator != availableWorkers.end(); iterator++)
@@ -189,8 +194,31 @@ public:
 
         return true;
     }
-    Task getTaskFromQueue(vector<Task> &priorityQueue, bool isRaining, vector<vector<Resource>> &availableMaterials, vector<Worker> &availableWorkers, vector<Worker> &activeWorkers, vector<Worker> &backupWorkers)
+
+    int rainingFifoFd = open(rainingFifoPath, O_RDONLY | O_NONBLOCK);
+    bool getRainingStatus()
     {
+        bool isRaining;
+        ssize_t bytesRead = read(rainingFifoFd, &isRaining, sizeof(isRaining));
+
+        if (bytesRead == -1)
+        {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            {
+                // No data was read from the FIFO, so continue with the next iteration of the loop
+            }
+            else
+            {
+                perror("ERROR! "); // Print the error message specified by errno
+            }
+        }
+        //cout << "isRaining: " << isRaining << endl;
+        return isRaining;
+    }
+
+    Task getTaskFromQueue(vector<Task> &priorityQueue, int queueIndex, bool &isRaining, vector<vector<Resource>> &availableMaterials, vector<Worker> &availableWorkers, vector<Worker> &activeWorkers, vector<Worker> &backupWorkers)
+    {
+        
 
         /*
 
@@ -206,7 +234,9 @@ public:
             while (!haltedTasks.empty())
             {
                 Task haltedTask = haltedTasks.front();
+                pthread_mutex_trylock(&haltedTasksMutex);
                 haltedTasks.erase(haltedTasks.begin());
+                pthread_mutex_unlock(&haltedTasksMutex);
 
                 if (isTaskFeasible(haltedTask, isRaining, availableMaterials, availableWorkers, activeWorkers, backupWorkers))
                 {
@@ -215,8 +245,12 @@ public:
                 else
                 {
                     cout << "Task " << haltedTask.taskName << " is not feasible\n";
+                    pthread_mutex_trylock(&haltedTasksMutex);
                     haltedTasks.push_back(haltedTask);
+                    pthread_mutex_unlock(&haltedTasksMutex);
+                    sleep(5);
                 }
+
             }
         }
         else
@@ -224,8 +258,12 @@ public:
             while (!(priorityQueue.empty()))
             {
                 Task selectTask = priorityQueue.front();
-                priorityQueue.erase(priorityQueue.begin());
 
+                // lock the respective mutex 
+                (queueIndex == 0) ? pthread_mutex_trylock(&highPriorityMutex) : (queueIndex == 1) ? pthread_mutex_trylock(&mediumPriorityMutex) : pthread_mutex_trylock(&lowPriorityMutex);
+                priorityQueue.erase(priorityQueue.begin());
+                (queueIndex == 0) ? pthread_mutex_unlock(&highPriorityMutex) : (queueIndex == 1) ? pthread_mutex_unlock(&mediumPriorityMutex) : pthread_mutex_unlock(&lowPriorityMutex);
+                
                 if (isTaskFeasible(selectTask, isRaining, availableMaterials, availableWorkers, activeWorkers, backupWorkers))
                 {
                     cout << "Task " << selectTask.taskName << " selected from priority queue\n";
@@ -234,7 +272,11 @@ public:
                 else
                 {
                     cout << "Task " << selectTask.taskName << " is not feasible\n";
+
+                    (queueIndex == 0) ? pthread_mutex_trylock(&highPriorityMutex) : (queueIndex == 1) ? pthread_mutex_trylock(&mediumPriorityMutex) : pthread_mutex_trylock(&lowPriorityMutex);
                     priorityQueue.push_back(selectTask);
+                    (queueIndex == 0) ? pthread_mutex_unlock(&highPriorityMutex) : (queueIndex == 1) ? pthread_mutex_unlock(&mediumPriorityMutex) : pthread_mutex_unlock(&lowPriorityMutex);
+                    sleep(5);
                 }
             }
         }
