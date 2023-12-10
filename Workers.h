@@ -8,7 +8,7 @@ struct Worker {
     int workerId;
     vector<string> skillSet;
     int skillLevel; //1 (High), 2 (Medium), 3 (Low)
-    float fatigue; //initially 100
+    int fatigue; //initially 0
 }; 
 
 class WorkerGenerator {
@@ -31,6 +31,7 @@ class WorkerGenerator {
         }
 
         w.skillLevel = skillLevel;
+        w.fatigue = 0;
         return w;
     }
 

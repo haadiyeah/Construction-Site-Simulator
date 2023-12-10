@@ -10,7 +10,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <cstring>
-
 #include "Resources.h"
 #include "Tasks.h"
 #include "Workers.h"
@@ -34,6 +33,7 @@ TasksScheduler tasksScheduler;
 WorkerGenerator workerGenerator;
 
 pthread_mutex_t materialsMutex[3] = {PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER};
+pthread_mutex_t backupWorkerMutex = PTHREAD_MUTEX_INITIALIZER;
 vector<vector<Resource>> materials(3); // 0 - bricks, 1 - cement, 2 - tools
 vector<Worker> backupWorkers;          // virtual workers
 vector<Worker> idleWorkers;
@@ -114,6 +114,20 @@ void *materialDegredation(void *arg)
     pthread_exit(NULL);
 }
 
+void* workerFatigue(void* arg) {
+    while(isRunning) {
+        for(int i = 0; i < backupWorkers.size(); i++) {
+            pthread_mutex_trylock(&backupWorkerMutex);
+            backupWorkers[i].fatigue -= 10;
+            if(backupWorkers[i].fatigue < 0) {
+                backupWorkers[i].fatigue = 0;
+            }
+        }
+        sleep(10); // fatigue decreases after every 10 seconds
+    }
+    pthread_exit(NULL);
+}
+
 void *taskCreation(void *arg)
 {
     while (isRunning)
@@ -125,6 +139,17 @@ void *taskCreation(void *arg)
         sleep(10); // create task after every 10 seconds
     }
     pthread_exit(NULL);
+}
+
+Worker getWorkingWorker(int id)
+{
+    for (int i = 0; i < workingWorkers.size(); i++)
+    {
+        if (workingWorkers[i].workerId == id)
+        {
+            return workingWorkers[i];
+        }
+    }    
 }
 
 void *execution(void *arg)
@@ -163,19 +188,6 @@ void *execution(void *arg)
     pthread_exit(NULL);
 }
 
-Worker getWorkingWorker(int id)
-{
-    for (int i = 0; i < workingWorkers.size(); i++)
-    {
-        if (workingWorkers[i].workerId == id)
-        {
-            return workingWorkers[i];
-        }
-    }
-
-    
-}
-
 void *tasksExecution(void *arg) //
 {
     cout << "Tasks Execution: Tasks execution started" << endl;
@@ -187,6 +199,7 @@ void *tasksExecution(void *arg) //
 
         // Task task = tasksScheduler.getTask(isRaining, materials, idleWorkers);
         Task task = taskGenerator.generateTask();
+        int initialTime = task.time;
         cout << "Tasks Execution: Task " << task.taskName << " is being executed" << endl;
 
         pid_t pid = fork();
@@ -222,18 +235,35 @@ void *tasksExecution(void *arg) //
                 time *= -1;
                 task.time = time;
                 cout << "Task " << task.taskName << " interrupted! Time remaining: " << task.time << endl;
-                tasksScheduler.scheduleTask(task);
+
+
+                for (int i = 0; i < task.assignedWorkers.size(); i++)
+                {
+                    pthread_mutex_trylock(&backupWorkerMutex);
+                    Worker worker = getWorkingWorker(task.assignedWorkers[i]);
+                    worker.fatigue += (initialTime - task.time) * 5;    // fatigue increases by 5 for every second of work
+                    backupWorkers.push_back(worker);
+                    pthread_mutex_unlock(&backupWorkerMutex);
+
+                    cout << "Worker " << worker.workerId << " is now going to backup, with fatigue: " << worker.fatigue << endl;
+                }
+
+                tasksScheduler.scheduleTask(task);  // change to aadd to halted tasks
             }
             else
             {
                 cout << "Task " << task.taskName << " completed!" << endl;
                 // release workers
 
-                for (int i = 0; i < task.numWorkers; i++)
+                for (int i = 0; i < task.assignedWorkers.size(); i++)
                 {
+                    pthread_mutex_trylock(&backupWorkerMutex);
                     Worker worker = getWorkingWorker(task.assignedWorkers[i]);
-                    worker.fatigue += 20;
+                    worker.fatigue += (initialTime - task.time) * 5;    // fatigue increases by 5 for every second of work
                     backupWorkers.push_back(worker);
+                    pthread_mutex_unlock(&backupWorkerMutex);
+
+                    cout << "Worker " << worker.workerId << " is now going to backup, with fatigue: " << worker.fatigue << endl;
                 }
             }
         }
@@ -346,11 +376,11 @@ int main()
     updateWorkersLists();
 
     const int EXECUTERS = 1; // number of threads for executing tasks
-    pthread_t supply, degrade, createTask, executeTasks[EXECUTERS], checkRunningStatus;
+    pthread_t supply, degrade, fatigue, createTask, executeTasks[EXECUTERS], checkRunningStatus;
     pthread_create(&checkRunningStatus, NULL, checkRunning, NULL);
-
     pthread_create(&supply, NULL, supplyFactory, NULL);
     pthread_create(&degrade, NULL, materialDegredation, NULL);
+    pthread_create(&fatigue, NULL, workerFatigue, NULL);
     // pthread_create(&createTask, NULL, taskCreation, NULL);
 
     for (int i = 0; i < EXECUTERS; i++)
@@ -358,6 +388,7 @@ int main()
         pthread_create(&executeTasks[i], NULL, tasksExecution, NULL);
     }
 
+    pthread_join(checkRunningStatus, NULL);
     pthread_join(supply, NULL);
     pthread_join(degrade, NULL);
     pthread_join(createTask, NULL);
