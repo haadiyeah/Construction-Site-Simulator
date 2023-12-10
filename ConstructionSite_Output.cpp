@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <cstring>
+#include <algorithm>
 #include "Resources.h"
 #include "Tasks.h"
 #include "Workers.h"
@@ -44,12 +45,20 @@ vector<Worker> workingWorkers;
 
 void *supplyFactory(void *arg)
 {
+    int demands[3] = {0, 0, 0}; //0 = brick, 1 = cement, 2 = tool
+
     while (isRunning)
     {
         for (int i = 0; i < 3; i++)
         {
-            if (materials[i].size() < MAX_CAPACITY)
+            //If the resource is eligible for production && the demand is the highest (most consumed resource)
+            if (materials[i].size() < MAX_CAPACITY )
             {
+                if(demands[i] != max({demands[0], demands[1], demands[2]})) {
+                    if(rand()%2) { //50% less chance of producing the resource if it is not the most demanded resource
+                        continue;
+                    }
+                }
                 pthread_mutex_lock(&materialsMutex[i]);
                 Resource r;
                 switch (i)
@@ -67,6 +76,7 @@ void *supplyFactory(void *arg)
                 r.quality = 100;
                 cout << "Supply factory: Produced 1 " << r.type << endl;
                 materials[i].push_back(r);
+                demands[i]++;
                 pthread_mutex_unlock(&materialsMutex[i]);
             }
         }

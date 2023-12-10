@@ -19,7 +19,7 @@ class WorkerGenerator {
     public:
     static Worker generateWorker(int skillLevel=0) {
         if(skillLevel<1 || skillLevel>3) {
-            skillLevel = rand() % 3 + 1;
+          skillLevel = (rand()%2) ? rand()%3+1 : 1 ;
         }
 
         Worker w;
