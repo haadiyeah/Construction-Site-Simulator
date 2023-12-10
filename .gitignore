@@ -1,5 +1,8 @@
 .vscode/c_cpp_properties.json
+*.json
 *.o
 input
 output
 test
+ConstructionSite_Input
+ConstructionSite_Output

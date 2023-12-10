@@ -11,9 +11,9 @@ struct Task
     int priority;               // 1 (High), 2 (Medium), 3 (Low)
     int time;                   // number to sleep
     vector<Resource> resources; // resources required for the task
-    vector<int> assignedWorkers;        // ids of workers assigned to the task
+    vector<int> assignedWorkers;// ids of workers assigned to the task
     int numWorkers;             // number of workers required to implement this task
-    bool indoor;               // true if task is indoor, false if outdoor
+    bool indoor;                // true if task is indoor, false if outdoor
 };
 
 class TaskGenerator
@@ -32,6 +32,7 @@ private:
     void initTask(Task &t)
     {
         t.time = rand() % 10 + 1;
+        cout << "Generated time: " << t.time << endl;
         int numResources = rand() % 5 + 1;
         for (int j = 0; j < numResources; j++)
         {
@@ -95,6 +96,7 @@ public:
             break;
         }
         
+        cout << "Invalid priority passed to generateTask" << endl;
         Task t;
         t.taskName = "Invalid task";
         return t; //will never reach here

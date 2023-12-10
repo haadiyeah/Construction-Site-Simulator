@@ -32,6 +32,7 @@ class WorkerGenerator {
         }
 
         w.skillLevel = skillLevel;
+        w.fatigue = 0;
         return w;
     }
 

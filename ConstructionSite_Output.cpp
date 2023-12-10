@@ -10,7 +10,6 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <cstring>
-
 #include "Resources.h"
 #include "Tasks.h"
 #include "Workers.h"
@@ -37,6 +36,7 @@ TasksScheduler tasksScheduler;
 WorkerGenerator workerGenerator;
 
 pthread_mutex_t materialsMutex[3] = {PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER};
+pthread_mutex_t backupWorkerMutex = PTHREAD_MUTEX_INITIALIZER;
 vector<vector<Resource>> materials(3); // 0 - bricks, 1 - cement, 2 - tools
 vector<Worker> backupWorkers;          // virtual workers
 vector<Worker> idleWorkers;
@@ -65,12 +65,12 @@ void *supplyFactory(void *arg)
                     break;
                 }
                 r.quality = 100;
-                // cout << "Supply factory: Produced 1 " << r.type << endl;
+                cout << "Supply factory: Produced 1 " << r.type << endl;
                 materials[i].push_back(r);
                 pthread_mutex_unlock(&materialsMutex[i]);
             }
         }
-        sleep(5); // supply after every 5 seconds
+        sleep(1); // supply after every 5 seconds
     }
     pthread_exit(NULL);
 }
@@ -117,6 +117,20 @@ void *materialDegredation(void *arg)
     pthread_exit(NULL);
 }
 
+void* workerFatigue(void* arg) {
+    while(isRunning) {
+        for(int i = 0; i < backupWorkers.size(); i++) {
+            pthread_mutex_trylock(&backupWorkerMutex);
+            backupWorkers[i].fatigue -= 10;
+            if(backupWorkers[i].fatigue < 0) {
+                backupWorkers[i].fatigue = 0;
+            }
+        }
+        sleep(10); // fatigue decreases after every 10 seconds
+    }
+    pthread_exit(NULL);
+}
+
 void *taskCreation(void *arg)
 {
     while (isRunning)
@@ -130,6 +144,19 @@ void *taskCreation(void *arg)
     pthread_exit(NULL);
 }
 
+Worker getWorkingWorker(int id)
+{
+    for (int i = 0; i < workingWorkers.size(); i++)
+    {
+        if (workingWorkers[i].workerId == id)
+        {
+            Worker worker = workingWorkers[i];
+            workingWorkers.erase(workingWorkers.begin() + i);
+            return worker;
+        }
+    }    
+}
+
 void *execution(void *arg)
 {
     cout << "in thread Execution: Execution started" << endl;
@@ -138,9 +165,6 @@ void *execution(void *arg)
     cout << "Task time: " << task.time << endl;
 
     bool rain;
-
-    // read(parentToChild[0], &rain, sizeof(rain));
-    // cout << "Rain: " << rain << endl;
 
     while (read(parentToChild[0], &rain, sizeof(rain)))
     {
@@ -167,17 +191,6 @@ void *execution(void *arg)
     }
 
     pthread_exit(NULL);
-}
-
-Worker getWorkingWorker(int id)
-{
-    for (int i = 0; i < workingWorkers.size(); i++)
-    {
-        if (workingWorkers[i].workerId == id)
-        {
-            return workingWorkers[i];
-        }
-    }
 }
 
 // function to update worker lists in pipe in order to be read by the other process
@@ -245,21 +258,22 @@ void *tasksExecution(void *arg) //
 
     while (isRunning)
     {
+        cout << "-" << endl;
         pipe(parentToChild);
         pipe(childToParent);
+        cout << "Tasks Execution: Pipes created" << endl;
 
-        // Task task = tasksScheduler.getTask(isRaining, materials, idleWorkers);
-        Task task = taskGenerator.generateTask();
+        Task task = tasksScheduler.getTask(isRaining, materials, idleWorkers, workingWorkers, backupWorkers);
+        cout << "Task got" << endl;
+        // Task task = taskGenerator.generateTask();
+        int initialTime = task.time;
         cout << "Tasks Execution: Task " << task.taskName << " is being executed" << endl;
-        cout << "Curr Rain Status: " << isRaining << endl;
+        cout << "Tasks Execution: Task time: " << task.time << endl;
 
-        cout << "Child process created" << endl;
         pid_t pid = fork();
 
         if (pid == 0)
         {
-            cout << "Child process started" << endl;
-
             close(parentToChild[1]);
             close(childToParent[0]);
 
@@ -268,48 +282,58 @@ void *tasksExecution(void *arg) //
 
             pthread_join(thread, NULL);
 
-            cout << "Child process ended" << endl;
             exit(0);
         }
         else if (pid > 0)
         {
-            cout << "Parent process started" << endl;
-
             close(parentToChild[0]);
             close(childToParent[1]);
 
-            cout << "1Rain written: " << isRaining << endl;
             write(parentToChild[1], &isRaining, sizeof(isRaining));
             int time;
-            cout << "Parent process waiting for time" << endl;
             while (read(childToParent[0], &time, sizeof(time)) && time > 0)
             {
-
-                cout << "Rain written: " << isRaining << endl;
                 write(parentToChild[1], &isRaining, sizeof(isRaining));
             }
 
-            cout << "Enuf reading" << endl;
             wait(NULL);
-            cout << "Enuf waiting" << endl;
 
             if (time < 0)
             {
                 time *= -1;
                 task.time = time;
                 cout << "Task " << task.taskName << " interrupted! Time remaining: " << task.time << endl;
-                tasksScheduler.scheduleTask(task);
+
+
+                for (int i = 0; i < task.assignedWorkers.size(); i++)
+                {
+                    pthread_mutex_trylock(&backupWorkerMutex);
+                    Worker worker = getWorkingWorker(task.assignedWorkers[i]);
+                    worker.fatigue += (initialTime - task.time) * 5;    // fatigue increases by 5 for every second of work
+                    backupWorkers.push_back(worker);
+                    pthread_mutex_unlock(&backupWorkerMutex);
+
+                    cout << "Worker " << worker.workerId << " is now going to backup, with fatigue: " << worker.fatigue << endl;
+                }
+
+                tasksScheduler.scheduleTask(task);  // change to aadd to halted tasks
             }
             else
             {
+                task.time = time;
+
                 cout << "Task " << task.taskName << " completed!" << endl;
                 // release workers
 
                 for (int i = 0; i < task.assignedWorkers.size(); i++)
                 {
+                    pthread_mutex_trylock(&backupWorkerMutex);
                     Worker worker = getWorkingWorker(task.assignedWorkers[i]);
-                    worker.fatigue += 20;
+                    worker.fatigue += (initialTime - task.time) * 5;    // fatigue increases by 5 for every second of work
                     backupWorkers.push_back(worker);
+                    pthread_mutex_unlock(&backupWorkerMutex);
+
+                    cout << "Worker " << worker.workerId << " is now going to backup, with fatigue: " << worker.fatigue << endl;
                 }
             }
         }
@@ -544,26 +568,29 @@ int main()
     updateWorkersLists();
 
     const int EXECUTERS = 1; // number of threads for executing tasks
-    pthread_t supply, degrade, createTask, executeTasks[EXECUTERS], checkRunningStatus, checkAlertsStatus;
+    pthread_t supply, degrade, fatigue, createTask, executeTasks[EXECUTERS], checkRunningStatus, checkAlertsStatus;
     pthread_create(&checkRunningStatus, NULL, checkRunning, NULL);
     pthread_create(&checkAlertsStatus, NULL, checkAlerts, NULL);
     pthread_create(&supply, NULL, supplyFactory, NULL);
     pthread_create(&degrade, NULL, materialDegredation, NULL);
+    pthread_create(&fatigue, NULL, workerFatigue, NULL);
     pthread_create(&createTask, NULL, taskCreation, NULL);
 
     for (int i = 0; i < EXECUTERS; i++)
     { // create threads for executing tasks
-       pthread_create(&executeTasks[i], NULL, tasksExecution, NULL);
+        pthread_create(&executeTasks[i], NULL, tasksExecution, NULL);
     }
 
+    pthread_join(checkRunningStatus, NULL);
+    pthread_join(checkAlertsStatus, NULL);
     pthread_join(supply, NULL);
     pthread_join(degrade, NULL);
+    pthread_join(fatigue, NULL);
     pthread_join(createTask, NULL);
-    pthread_join(checkAlertsStatus, NULL);
 
     for (int i = 0; i < EXECUTERS; i++)
     {
-     pthread_join(executeTasks[i], NULL);
+        pthread_join(executeTasks[i], NULL);
     }
 
     // remove fifo
