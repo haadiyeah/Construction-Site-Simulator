@@ -25,8 +25,10 @@ int parentToChild[2];
 int childToParent[2];
 const char *runningFifoPath = "/tmp/isRunningFifo";
 const char *rainingFifoPath = "/tmp/isRainingFifo";
-const char * idleWorkersFifoPath = "/tmp/idleWorkersFifo";
-const char * workingWorkersFifoPath = "/tmp/workingWorkersFifo";
+const char *idleWorkersFifoPath = "/tmp/idleWorkersFifo";
+const char *workingWorkersFifoPath = "/tmp/workingWorkersFifo";
+const char *workerLeaveAlert = "/tmp/workerLeaveAlert";
+const char *workerDeathAlert = "/tmp/workerDeathAlert";
 
 const int MAX_CAPACITY = 50; // max capacity for each type of resource
 TaskGenerator taskGenerator;
@@ -177,6 +179,65 @@ Worker getWorkingWorker(int id)
     }
 }
 
+// function to update worker lists in pipe in order to be read by the other process
+void updateWorkersLists()
+{
+    // close the fifos to ensure overwriting old data instead of appending
+    close(open(idleWorkersFifoPath, O_WRONLY | O_NONBLOCK));
+    close(open(workingWorkersFifoPath, O_WRONLY | O_NONBLOCK));
+
+    int idleWorkersFifoFd = open(idleWorkersFifoPath, O_WRONLY | O_NONBLOCK); // Open pipe for writing in non-blocking mode
+    if (idleWorkersFifoFd == -1)
+    {
+        cerr << "Failed to open " << idleWorkersFifoPath << ": " << strerror(errno) << endl;
+        // return;
+    }
+
+    int workingWorkersFifoFd = open(workingWorkersFifoPath, O_WRONLY | O_NONBLOCK);
+    if (workingWorkersFifoFd == -1)
+    {
+        cerr << "Failed to open " << workingWorkersFifoPath << ": " << strerror(errno) << endl;
+        // return;
+    }
+
+    vector<string> serializedIdleWorkers = serializeWorkers(idleWorkers);
+    vector<string> serializedWorkingWorkers = serializeWorkers(workingWorkers);
+
+    ostringstream ossIdle;
+    ostringstream ossWorking;
+    for (const string &serializedWorker : serializedIdleWorkers)
+    {
+        ossIdle << serializedWorker << "\n";
+    }
+    for (const string &serializedWorker : serializedWorkingWorkers)
+    {
+        ossWorking << serializedWorker << "\n";
+    }
+
+    string idleOutput = ossIdle.str();
+    string workingOutput = ossWorking.str();
+
+    ssize_t written = write(idleWorkersFifoFd, idleOutput.c_str(), idleOutput.length());
+    if (written == -1)
+    {
+        cerr << "Failed to write to " << idleWorkersFifoPath << ": " << strerror(errno) << endl;
+    }
+    else if (written < idleOutput.length())
+    {
+        cerr << "Buffer too small when writing to " << idleWorkersFifoPath << endl;
+    }
+
+    ssize_t written2 = write(workingWorkersFifoFd, workingOutput.c_str(), workingOutput.length());
+    if (written2 == -1)
+    {
+        cerr << "Failed to write to " << workingWorkersFifoPath << ": " << strerror(errno) << endl;
+    }
+    else if (written2 < workingOutput.length())
+    {
+        cerr << "Buffer too small when writing to " << workingWorkersFifoPath << endl;
+    }
+}
+
 void *tasksExecution(void *arg) //
 {
     cout << "Tasks Execution: Tasks execution started" << endl;
@@ -243,7 +304,7 @@ void *tasksExecution(void *arg) //
                 cout << "Task " << task.taskName << " completed!" << endl;
                 // release workers
 
-                for (int i = 0; i < task.numWorkers; i++)
+                for (int i = 0; i < task.assignedWorkers.size(); i++)
                 {
                     Worker worker = getWorkingWorker(task.assignedWorkers[i]);
                     worker.fatigue += 20;
@@ -253,7 +314,7 @@ void *tasksExecution(void *arg) //
         }
         else
         {
-            cout << "Error" << endl;
+            cout << "Error occurred in tasks execution " << endl;
         }
 
         close(parentToChild[0]);
@@ -300,48 +361,114 @@ void *checkRunning(void *arg)
     pthread_exit(NULL);
 }
 
-//function to update worker lists in pipe in order to be read by the other process
-void updateWorkersLists(){
-    int idleWorkersFifoFd = open(idleWorkersFifoPath, O_WRONLY | O_NONBLOCK); // Open pipe for writing in non-blocking mode
-    if (idleWorkersFifoFd == -1) {
-        cerr << "Failed to open " << idleWorkersFifoPath << ": " << strerror(errno) << endl;
-       // return;
+void *checkAlerts(void *arg)
+{
+    int leaveWorkerId, deathWorkerId;
+    int workerLeaveAlertFd = open(workerLeaveAlert, O_RDWR | O_NONBLOCK); // Open pipe for reading and writing in non-blocking mode
+    int workerDeathAlertFd = open(workerDeathAlert, O_RDWR | O_NONBLOCK);
+
+    while (isRunning)
+    {
+        // cout<<"CHECKING ALERTS"<<endl;
+
+        ssize_t leaveBytesRead = read(workerLeaveAlertFd, &leaveWorkerId, sizeof(leaveWorkerId));
+        ssize_t deathBytesRead = read(workerDeathAlertFd, &deathWorkerId, sizeof(deathWorkerId));
+        // cout<<"LEAVE WORKER ID READ: "<<leaveWorkerId<<endl;
+
+        if (deathBytesRead == -1)
+        {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            {
+                // No data was read from the FIFO, so continue with the next iteration of the loop
+            }
+            else
+            {
+                perror("ERROR! "); // Print the error message specified by errno
+                break;
+            }
+        }
+        else
+        {
+
+            if (deathWorkerId > -1)
+            {
+                cout << "RIP! Worker " << deathWorkerId << " died!" << endl;
+                for (int i = 0; i < workingWorkers.size(); i++)
+                {
+                    if (workingWorkers[i].workerId == deathWorkerId)
+                    {
+                        workingWorkers.erase(workingWorkers.begin() + i);
+                        break;
+                    }
+                    // TODO @MUSA halt task which worker was assigned to
+                }
+                for (int i = 0; i < idleWorkers.size(); i++)
+                {
+                    if (idleWorkers[i].workerId == deathWorkerId)
+                    {
+                        idleWorkers.erase(idleWorkers.begin() + i);
+                        break;
+                    }
+                }
+                int writeback = -1;
+                write(workerDeathAlertFd, &writeback, sizeof(writeback));
+                updateWorkersLists();
+            }
+        }
+        //  cout<<"LEAVE WORKER ID " <<leaveWorkerId<<endl;
+
+        if (leaveBytesRead == -1)
+        {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            {
+                // No data was read from the FIFO, so continue with the next iteration of the loop
+            }
+            else
+            {
+                perror("ERROR! "); // Print the error message specified by errno
+                break;
+            }
+        }
+        else
+        {
+            if (leaveWorkerId > -1)
+            {
+                // cout<<"LEAVE WORKER ID IN IF STMT " <<leaveWorkerId<<endl;
+                int writeback = -2;
+                cout << "Worker " << leaveWorkerId << " applied for leave" << endl;
+                for (int i = 0; i < workingWorkers.size(); i++)
+                {
+                    if (workingWorkers[i].workerId == leaveWorkerId)
+                    {
+                        cout << "Leave application rejected because worker is assigned to a task. Pls complete task before leaving." << endl;
+                        sleep(1); // sleep
+                        writeback = -2;
+                        break;
+                    }
+                }
+                for (int i = 0; i < idleWorkers.size(); i++)
+                {
+                    if (idleWorkers[i].workerId == leaveWorkerId)
+                    {
+                        cout << "Leave application accepted, you may go on leave. Bye!" << endl;
+                        sleep(1); // sleep
+                        writeback = -1;
+                        backupWorkers.push_back(idleWorkers[i]);
+                        idleWorkers.erase(idleWorkers.begin() + i);
+                        break;
+                    }
+                }
+                // -1 indicates accepted, -2 indicates rejected
+                write(workerLeaveAlertFd, &writeback, sizeof(writeback));
+                updateWorkersLists();
+            }
+        }
     }
 
-    int workingWorkersFifoFd = open(workingWorkersFifoPath, O_WRONLY | O_NONBLOCK);
-    if (workingWorkersFifoFd == -1) {
-        cerr << "Failed to open " << workingWorkersFifoPath << ": " << strerror(errno) << endl;
-       // return;
-    }
-
-    vector<string> serializedIdleWorkers = serializeWorkers(idleWorkers);
-    vector<string> serializedWorkingWorkers = serializeWorkers(workingWorkers);
-
-    ostringstream ossIdle;
-    ostringstream ossWorking;
-    for (const string& serializedWorker : serializedIdleWorkers) {
-        ossIdle << serializedWorker << "\n";
-    }
-    for(const string& serializedWorker : serializedWorkingWorkers){
-        ossWorking << serializedWorker << "\n";
-    }
-
-    string idleOutput = ossIdle.str();
-    string workingOutput = ossWorking.str();
-
-    ssize_t written = write(idleWorkersFifoFd, idleOutput.c_str(), idleOutput.length());
-    if (written == -1) {
-        cerr << "Failed to write to " << idleWorkersFifoPath << ": " << strerror(errno) << endl;
-    } else if (written < idleOutput.length()) {
-        cerr << "Buffer too small when writing to " << idleWorkersFifoPath << endl;
-    }
-
-    ssize_t written2 = write(workingWorkersFifoFd, workingOutput.c_str(), workingOutput.length());
-    if (written2 == -1) {
-        cerr << "Failed to write to " << workingWorkersFifoPath << ": " << strerror(errno) << endl;
-    } else if (written2 < workingOutput.length()) {
-        cerr << "Buffer too small when writing to " << workingWorkersFifoPath << endl;
-    }
+    // closinf pipes because ending program
+    close(workerLeaveAlertFd);
+    close(workerDeathAlertFd);
+    pthread_exit(NULL);
 }
 
 int main()
@@ -360,25 +487,26 @@ int main()
     updateWorkersLists();
 
     const int EXECUTERS = 1; // number of threads for executing tasks
-    pthread_t supply, degrade, createTask, executeTasks[EXECUTERS], checkRunningStatus;
+    pthread_t supply, degrade, createTask, executeTasks[EXECUTERS], checkRunningStatus, checkAlertsStatus;
     pthread_create(&checkRunningStatus, NULL, checkRunning, NULL);
-
+    pthread_create(&checkAlertsStatus, NULL, checkAlerts, NULL);
     pthread_create(&supply, NULL, supplyFactory, NULL);
     pthread_create(&degrade, NULL, materialDegredation, NULL);
-    // pthread_create(&createTask, NULL, taskCreation, NULL);
+    pthread_create(&createTask, NULL, taskCreation, NULL);
 
     for (int i = 0; i < EXECUTERS; i++)
     { // create threads for executing tasks
-        pthread_create(&executeTasks[i], NULL, tasksExecution, NULL);
+       pthread_create(&executeTasks[i], NULL, tasksExecution, NULL);
     }
 
     pthread_join(supply, NULL);
     pthread_join(degrade, NULL);
     pthread_join(createTask, NULL);
+    pthread_join(checkAlertsStatus, NULL);
 
     for (int i = 0; i < EXECUTERS; i++)
     {
-        pthread_join(executeTasks[i], NULL);
+     pthread_join(executeTasks[i], NULL);
     }
 
     // remove fifo

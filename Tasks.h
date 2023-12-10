@@ -1,4 +1,5 @@
 #pragma once
+
 #include "Resources.h"
 #include <vector>
 #include <string>   
@@ -10,7 +11,7 @@ struct Task
     int priority;               // 1 (High), 2 (Medium), 3 (Low)
     int time;                   // number to sleep
     vector<Resource> resources; // resources required for the task
-    vector<int> assignedWorkers;        // workers assigned to the task
+    vector<int> assignedWorkers;        // ids of workers assigned to the task
     int numWorkers;             // number of workers required to implement this task
     bool indoor;               // true if task is indoor, false if outdoor
 };
