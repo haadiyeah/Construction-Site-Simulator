@@ -8,7 +8,7 @@ struct Worker {
     int workerId;
     vector<string> skillSet;
     int skillLevel; //1 (High), 2 (Medium), 3 (Low)
-    int fatigue; //initially 0
+    float fatigue; //initially 0
 }; 
 
 class WorkerGenerator {
@@ -45,7 +45,17 @@ string WorkerGenerator::skillSets[3][3] = { { "Landscaping", "Scaffolding", "Roo
                                             {"Painting", "Cement Mixing", "Structural Framing"} };
 
 
-
+//------------Print a worker
+void printWorker(const Worker& worker) {
+    cout << "Worker ID: " << worker.workerId << endl;
+    cout << "Skill Level: " << worker.skillLevel << endl;
+    cout << "Fatigue: " << worker.fatigue << endl;
+    cout << "Skill Set: {";
+    for (const string& skill : worker.skillSet) {
+        cout << skill << " ";
+    }
+    cout <<" } "<< endl;
+}
 
 //------------Functions to serialize/deserialize worker objects-----------------
 //serialize worker object to read/write to pipe
