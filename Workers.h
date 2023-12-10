@@ -24,6 +24,7 @@ class WorkerGenerator {
 
         Worker w;
         w.workerId = workerId++;
+        w.fatigue = 0;
         int skillSet = rand() % 3;
 
         for(int i=0;i<3;i++) {
@@ -40,8 +41,8 @@ class WorkerGenerator {
 //each skillset has 3 skills, one of each priority type.
 int WorkerGenerator::workerId = 0;
 string WorkerGenerator::skillSets[3][3] = { { "Landscaping", "Scaffolding", "Roofing"}, 
-                                            {"Decorating", "Bricklaying", "Foundation Laying"}, 
-                                            {"Painting", "Cement Mixing", "Structural Framing"} };
+                                            {"Decorating", "Bricklaying", "Foundation-Laying"}, 
+                                            {"Painting", "Cement-Mixing", "Structural-Framing"} };
 
 
 //------------Print a worker

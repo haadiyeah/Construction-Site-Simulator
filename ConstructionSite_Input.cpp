@@ -23,6 +23,7 @@ const char *idleWorkersFifoPath = "/tmp/idleWorkersFifo";
 const char *workingWorkersFifoPath = "/tmp/workingWorkersFifo";
 const char *workerLeaveAlert = "/tmp/workerLeaveAlert";
 const char *workerDeathAlert = "/tmp/workerDeathAlert";
+const char *workerPromotionAlert = "/tmp/workerPromotionAlert";
 
 vector<Worker> idleWorkers;
 vector<Worker> workingWorkers;
@@ -47,6 +48,17 @@ void initFifos()
     }
     write(fifoFd, &reply, sizeof(reply));
     close(fifoFd);
+
+    //in promotion alert the default value is zero because -1 = demotion, +1 = promotion.
+    int zero=0;
+    fifoFd = open(workerPromotionAlert, O_WRONLY | O_NONBLOCK); // Open pipe for writing in non-blocking mode
+    if (fifoFd == -1)
+    {
+        cerr << "Failed to open " << workerPromotionAlert << ": " << strerror(errno) << endl;
+    }
+    write(fifoFd, &zero, sizeof(zero));
+    close(fifoFd);
+
 }
 
 void getWorkersLists()
@@ -120,6 +132,29 @@ void getWorkersLists()
     workingWorkers = deserializeWorkers(serializedWorkingWorkers);
 }
 
+//returns skill level of the found worker else,-1
+int findWorkerAndPrint(int wid)
+{
+    for (int i = 0; i < idleWorkers.size(); i++)
+    {
+        if (idleWorkers[i].workerId == wid)
+        {
+            printWorker(idleWorkers[i]);
+            return idleWorkers[i].skillLevel;
+        }
+    }
+    for (int i = 0; i < workingWorkers.size(); i++)
+    {
+        if (workingWorkers[i].workerId == wid)
+        {
+            printWorker(workingWorkers[i]);
+            return workingWorkers[i].skillLevel;
+        }
+    }
+    cout<<"Worker not found"<<endl;
+    return -1;
+}
+
 int main()
 {
     int choice = -1;
@@ -130,6 +165,7 @@ int main()
     mkfifo(workingWorkersFifoPath, 0666);
     mkfifo(workerLeaveAlert, 0666);
     mkfifo(workerDeathAlert, 0666);
+    mkfifo(workerPromotionAlert, 0666);
 
     // initFifos();
 
@@ -162,14 +198,18 @@ int main()
             for (int i = 0; i < idleWorkers.size(); i++)
             {
                 if(idleWorkers[i].workerId > 0 && idleWorkers[i].workerId < idleWorkers.size())
-                    cout << "\nWorker id: " << idleWorkers[i].workerId << endl;
+                    cout << "\n\t - Worker id: " << idleWorkers[i].workerId 
+                         << "\nSkill Level: "<< idleWorkers[i].skillLevel << ", Fatigue: " << idleWorkers[i].fatigue 
+                         << "\nSkill set: {" << idleWorkers[i].skillSet[0] << ", " << idleWorkers[i].skillSet[1] << ", " << idleWorkers[i].skillSet[2] << "}"<<endl; 
             }
             cout << "------------" << endl;
             cout << "Working workers:\n------------";
             for (int i = 0; i < workingWorkers.size(); i++)
             {
                 if(workingWorkers[i].workerId > 0 && workingWorkers[i].workerId < workingWorkers.size())
-                    cout << "\nWorker id: " << workingWorkers[i].workerId << endl;
+                    cout << "\nWorker id: " << workingWorkers[i].workerId 
+                        << "\nSkill Level: "<< workingWorkers[i].skillLevel << ", Fatigue: " << workingWorkers[i].fatigue
+                        << "\nSkill set: {" << workingWorkers[i].skillSet[0] << ", " << workingWorkers[i].skillSet[1] << ", " << workingWorkers[i].skillSet[2] << "}"<<endl;
             }
             cout << "------------" << endl;
             break;
@@ -179,6 +219,9 @@ int main()
             int wid, choice;
             cout << "Please enter the ID of the unfortunate worker " << endl;
             cin >> wid;
+            if(findWorkerAndPrint(wid) == -1) {
+                break;
+            }
             cout << "What happened to him? \n(1) Leave/Sickness \n(2) Death " << endl;
             cin >> choice;
             if (choice == 1)
@@ -269,7 +312,63 @@ int main()
         }
         case 3:
         {
-            cout << "Worker promotion" << endl;
+            int choice;
+            cout << "Worker promotion/demotion" << endl;
+            cout << "Please enter the ID of the worker you want to promote/demote" << endl;
+            int wid;
+            cin >> wid;
+            cout<<"Worker info: "<<endl;
+            int returnedSkillLevl = findWorkerAndPrint(wid);
+            if (returnedSkillLevl == -1) {
+                break;
+            }
+            cout << "Please enter the choice: \n(1) Promote \n(-1) Demote" << endl;
+            cin >> choice;
+            if(choice != 1 && choice != -1) {
+                cout << "Invalid choice!" << endl;
+            } else if( (returnedSkillLevl + choice) < 1 || (returnedSkillLevl + choice) > 3 ) {
+                cout<<" Invalid! cannot perform the desired action (promote/demote) at this skill level "<<endl;
+            } else {
+                int fifoFd = open(workerPromotionAlert, O_WRONLY | O_NONBLOCK); // Open pipe for writing in non-blocking mode
+                if (fifoFd == -1)
+                {
+                    cerr << "Failed to open " << workerPromotionAlert << ": " << strerror(errno) << endl;
+                    continue;
+                }
+                int writeNum = wid*choice;
+                write(fifoFd, &writeNum, sizeof(writeNum));
+                close(fifoFd);
+                sleep(1);
+                int fifoFdReply = open(workerPromotionAlert, O_RDONLY); // Open pipe for reading
+                if (fifoFdReply == -1)
+                {
+                    cerr << "Failed to open " << workerPromotionAlert << ": " << strerror(errno) << endl;
+                    continue;
+                }
+                int reply;
+                ssize_t bytesRead = read(fifoFdReply, &reply, sizeof(reply));
+                if (bytesRead == -1)
+                {
+                    cerr << "Failed to read from " << workerPromotionAlert << ": " << strerror(errno) << endl;
+                    continue;
+                }
+                if (bytesRead != sizeof(reply))
+                {
+                    cerr << "Invalid data read from " << workerPromotionAlert << endl;
+                    continue;
+                }
+                if (reply == 999)
+                {
+                    cout << "Worker " << wid << " has been promoted/demoted successfully. " << endl;
+                }
+                else
+                {
+                    cout << "Sorry! Invalid reply received" << endl;
+                }
+
+            }
+
+
             // increase worker skill level and update queues accordingly
             // worker would have to be reassigned
             break;

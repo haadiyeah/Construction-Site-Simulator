@@ -50,11 +50,11 @@ public:
         string lowPrioTaskNames[3] = {"Landscaping", "Decorating", "Painting"};
         bool lowPrioTaskIndoor[3] = {false, true, true};
 
-        string medPrioTaskNames[3] = {"Scaffolding", "Bricklaying", "Cement Mixing"};
+        string medPrioTaskNames[3] = {"Scaffolding", "Bricklaying", "Cement-Mixing"};
         bool medPrioTaskIndoor[3] = {false, true, false};
 
         //TODO add urgent repair
-        string highPrioTaskNames[3] = {"Roofing", "Foundation Laying", "Structural Framing"};
+        string highPrioTaskNames[3] = {"Roofing", "Foundation-Laying", "Structural-Framing"};
         bool highPrioTaskIndoor[3] = {false, true, false};
 
         for (int i = 0; i < 3; i++)

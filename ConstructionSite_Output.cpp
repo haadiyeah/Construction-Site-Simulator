@@ -29,6 +29,7 @@ const char *idleWorkersFifoPath = "/tmp/idleWorkersFifo";
 const char *workingWorkersFifoPath = "/tmp/workingWorkersFifo";
 const char *workerLeaveAlert = "/tmp/workerLeaveAlert";
 const char *workerDeathAlert = "/tmp/workerDeathAlert";
+const char *workerPromotionAlert = "/tmp/workerPromotionAlert";
 
 const int MAX_CAPACITY = 50; // max capacity for each type of resource
 TaskGenerator taskGenerator;
@@ -363,9 +364,10 @@ void *checkRunning(void *arg)
 
 void *checkAlerts(void *arg)
 {
-    int leaveWorkerId, deathWorkerId;
+    int leaveWorkerId, deathWorkerId, promoteWorkerId;
     int workerLeaveAlertFd = open(workerLeaveAlert, O_RDWR | O_NONBLOCK); // Open pipe for reading and writing in non-blocking mode
     int workerDeathAlertFd = open(workerDeathAlert, O_RDWR | O_NONBLOCK);
+    int workerPromoteAlertFd = open(workerPromotionAlert, O_RDWR | O_NONBLOCK);
 
     while (isRunning)
     {
@@ -373,6 +375,8 @@ void *checkAlerts(void *arg)
 
         ssize_t leaveBytesRead = read(workerLeaveAlertFd, &leaveWorkerId, sizeof(leaveWorkerId));
         ssize_t deathBytesRead = read(workerDeathAlertFd, &deathWorkerId, sizeof(deathWorkerId));
+        ssize_t promoteBytesRead = read(workerPromoteAlertFd, &promoteWorkerId, sizeof(promoteWorkerId));
+
         // cout<<"LEAVE WORKER ID READ: "<<leaveWorkerId<<endl;
 
         if (deathBytesRead == -1)
@@ -461,6 +465,59 @@ void *checkAlerts(void *arg)
                 // -1 indicates accepted, -2 indicates rejected
                 write(workerLeaveAlertFd, &writeback, sizeof(writeback));
                 updateWorkersLists();
+            }
+        }
+    
+        if(promoteBytesRead == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            {
+                // No data was read from the FIFO, so continue with the next iteration of the loop
+            }
+            else
+            {
+                perror("ERROR! "); // Print the error message specified by errno
+                break;
+            }
+        } else {
+            //negative worker id == demote the worker with that id
+            if(promoteWorkerId < 0 ) {
+                cout<<"Worker "<<promoteWorkerId<<" demoted "<<endl;
+                for(int i=0;i<idleWorkers.size();i++) {
+                    if(idleWorkers[i].workerId == (-1)*promoteWorkerId) {
+                        idleWorkers[i].skillLevel --;
+                        break;
+                    }
+                }
+                for(int i=0;i<workingWorkers.size();i++) {
+                    if(workingWorkers[i].workerId == (-1)*promoteWorkerId) {
+                        workingWorkers[i].skillLevel --;
+                        break;
+                    }
+                }
+                int writeback = 999;
+                write(workerPromoteAlertFd, &writeback, sizeof(writeback));
+                updateWorkersLists();
+          
+            //positive worker id == promote the worker with that id
+            } else if (promoteWorkerId > 0 ) {
+                cout<<"Worker "<<promoteWorkerId<<" promoted "<<endl;
+                for(int i=0;i<idleWorkers.size();i++) {
+                    if(idleWorkers[i].workerId == promoteWorkerId) {
+                        idleWorkers[i].skillLevel ++;
+                        break;
+                    }
+                }
+                for(int i=0;i<workingWorkers.size();i++) {
+                    if(workingWorkers[i].workerId == promoteWorkerId) {
+                        workingWorkers[i].skillLevel ++;
+                        break;
+                    }
+                }
+                int writeback = 999;
+                write(workerPromoteAlertFd, &writeback, sizeof(writeback));
+                updateWorkersLists();
+            } else {
+                //do nothing!
             }
         }
     }
