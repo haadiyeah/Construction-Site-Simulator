@@ -14,11 +14,15 @@ using namespace std;
 
 pthread_mutex_t queueRotationMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t idleWorkerMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t backupWorkerMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t workingWorkerMutex = PTHREAD_MUTEX_INITIALIZER;
+
 pthread_mutex_t highPriorityMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mediumPriorityMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t lowPriorityMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t haltedTasksMutex = PTHREAD_MUTEX_INITIALIZER;
-const char *rainingFifoPath = "/tmp/isRainingFifo";
+pthread_mutex_t urgentasksMutex = PTHREAD_MUTEX_INITIALIZER;
+//const char *rainingFifoPath = "/tmp/isRainingFifo";
 
 
 class TasksScheduler
@@ -29,6 +33,7 @@ private:
     vector<Task> mediumPriorityTasks;
     vector<Task> highPriorityTasks;
     vector<Task> haltedTasks;
+    vector<Task> urgentTasks;
 
     // ratios for rotating between the queues for MSQ
     static const int highPriorityRatio = 5;
@@ -42,21 +47,36 @@ private:
 public:
     void scheduleTask(Task &task)
     {
+        if(task.taskName == "Urget Repairs")
+        {
+            urgentTasks.push_back(task);
+            return;
+        }
+
         // high = 1, med = 2, low = 3
         tasks.push_back(task);
         switch (task.priority)
         {
         case 1:
             cout << "Task " << task.taskName << " added to high priority queue\n";
+
+            pthread_mutex_trylock(&highPriorityMutex);
             highPriorityTasks.push_back(task);
+            pthread_mutex_unlock(&highPriorityMutex);
             break;
         case 2:
             cout << "Task " << task.taskName << " added to medium priority queue\n";
+
+            pthread_mutex_trylock(&mediumPriorityMutex);
             mediumPriorityTasks.push_back(task);
+            pthread_mutex_unlock(&mediumPriorityMutex);
             break;
         case 3:
             cout << "Task " << task.taskName << " added to low priority queue\n";
+
+            pthread_mutex_trylock(&lowPriorityMutex);
             lowPriorityTasks.push_back(task);
+            pthread_mutex_unlock(&lowPriorityMutex);
             break;
         }
     }
@@ -129,6 +149,15 @@ public:
         {
             cout << "Task " << task.taskName << " is not feasible due to insufficient resources\n";
             return false;
+        } else {
+            // consume the resources
+            for(int i = 0; i < 3; i++){
+                for(int j = 0; j < task.resources.size(); j++){
+                    if(task.resources[j].type == availableMaterials[i][0].type){
+                        availableMaterials[i].erase(availableMaterials[i].begin());
+                    }
+                }
+            }
         }
 
         // Skilled work not available
@@ -152,8 +181,8 @@ public:
                 }
             }
         }
-
         pthread_mutex_unlock(&idleWorkerMutex);
+
         if (AWCounter < task.numWorkers)
         {
             cout << "Task " << task.taskName << " is not feasible due to insufficient skilled workers\n";
@@ -161,7 +190,6 @@ public:
         }
 
         // assinging idle workers to active workers
-        pthread_mutex_trylock(&idleWorkerMutex);
         for (int i = 0; i < task.numWorkers; i++)
         {
             task.assignedWorkers.push_back(workerIDS[i]);
@@ -171,16 +199,24 @@ public:
                 {
                     Worker assignWorker = *iterator;
 
-                    // erase assign worker from idle worker
+                    // erase assign worker from idle 
+                    pthread_mutex_trylock(&idleWorkerMutex);
                     iterator = availableWorkers.erase(iterator);
+                    pthread_mutex_unlock(&idleWorkerMutex);
+
                     activeWorkers.push_back(assignWorker);
 
-                    // removing worker from backup to idle
+                    // assigning worker from backup to idle
                     if (!(backupWorkers.empty()))
                     {
+                        pthread_mutex_trylock(&backupWorkerMutex);
                         Worker newWorker = backupWorkers.front();
                         backupWorkers.erase(backupWorkers.begin());
+                        pthread_mutex_unlock(&backupWorkerMutex);
+
+                        pthread_mutex_trylock(&idleWorkerMutex);
                         availableWorkers.push_back(newWorker);
+                        pthread_mutex_unlock(&idleWorkerMutex);
                     }
                     else
                     {
@@ -190,35 +226,31 @@ public:
                 }
             }
         }
-        pthread_mutex_unlock(&idleWorkerMutex);
 
         return true;
     }
 
-    int rainingFifoFd = open(rainingFifoPath, O_RDONLY | O_NONBLOCK);
-    bool getRainingStatus()
-    {
-        bool isRaining;
-        ssize_t bytesRead = read(rainingFifoFd, &isRaining, sizeof(isRaining));
-
-        if (bytesRead == -1)
-        {
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
-            {
-                // No data was read from the FIFO, so continue with the next iteration of the loop
-            }
-            else
-            {
-                perror("ERROR! "); // Print the error message specified by errno
-            }
-        }
-        //cout << "isRaining: " << isRaining << endl;
-        return isRaining;
-    }
-
     Task getTaskFromQueue(vector<Task> &priorityQueue, int queueIndex, bool &isRaining, vector<vector<Resource>> &availableMaterials, vector<Worker> &availableWorkers, vector<Worker> &activeWorkers, vector<Worker> &backupWorkers)
     {
-        
+        if(urgentTasks.size() > 0)
+        {
+            Task urgentTask = urgentTasks.front();
+
+            pthread_mutex_trylock(&idleWorkerMutex);
+            for(int i = 0; i < urgentTask.numWorkers; i++)
+            {
+                urgentTask.assignedWorkers.push_back(availableWorkers[i].workerId);
+                activeWorkers.push_back(availableWorkers[i]);
+                availableWorkers.erase(availableWorkers.begin());
+            }
+            pthread_mutex_unlock(&idleWorkerMutex);
+
+            pthread_mutex_trylock(&urgentasksMutex);
+            urgentTasks.erase(urgentTasks.begin());
+            pthread_mutex_unlock(&urgentasksMutex);
+
+            return urgentTask;
+        }
 
         /*
 
@@ -233,8 +265,8 @@ public:
         {
             while (!haltedTasks.empty())
             {
-                Task haltedTask = haltedTasks.front();
                 pthread_mutex_trylock(&haltedTasksMutex);
+                Task haltedTask = haltedTasks.front();
                 haltedTasks.erase(haltedTasks.begin());
                 pthread_mutex_unlock(&haltedTasksMutex);
 

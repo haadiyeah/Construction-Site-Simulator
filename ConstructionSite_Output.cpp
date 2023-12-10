@@ -23,7 +23,7 @@ bool isRaining = false;
 int parentToChild[2];
 int childToParent[2];
 const char *runningFifoPath = "/tmp/isRunningFifo";
-//const char *rainingFifoPath = "/tmp/isRainingFifo";
+const char *rainingFifoPath = "/tmp/isRainingFifo";
 const char *idleWorkersFifoPath = "/tmp/idleWorkersFifo";
 const char *workingWorkersFifoPath = "/tmp/workingWorkersFifo";
 const char *workerLeaveAlert = "/tmp/workerLeaveAlert";
@@ -36,7 +36,7 @@ TasksScheduler tasksScheduler;
 WorkerGenerator workerGenerator;
 
 pthread_mutex_t materialsMutex[3] = {PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER};
-pthread_mutex_t backupWorkerMutex = PTHREAD_MUTEX_INITIALIZER;
+//pthread_mutex_t backupWorkerMutex = PTHREAD_MUTEX_INITIALIZER;
 vector<vector<Resource>> materials(3); // 0 - bricks, 1 - cement, 2 - tools
 vector<Worker> backupWorkers;          // virtual workers
 vector<Worker> idleWorkers;
