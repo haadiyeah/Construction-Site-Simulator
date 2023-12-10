@@ -38,10 +38,7 @@ TaskGenerator taskGenerator;
 TasksScheduler tasksScheduler;
 WorkerGenerator workerGenerator;
 
-//--- Material related variables --- 
-vector<vector<Resource>> materials(3); // 0 - bricks, 1 - cement, 2 - tools
 pthread_mutex_t materialsMutex[3] = {PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER};
-// pthread_mutex_t backupWorkerMutex = PTHREAD_MUTEX_INITIALIZER;
 vector<vector<Resource>> materials(3); // 0 - bricks, 1 - cement, 2 - tools
 
 // --- Worker related variables ---
