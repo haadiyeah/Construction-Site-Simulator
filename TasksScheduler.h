@@ -18,7 +18,9 @@ pthread_mutex_t highPriorityMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mediumPriorityMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t lowPriorityMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t haltedTasksMutex = PTHREAD_MUTEX_INITIALIZER;
-const char *rainingFifoPath = "/tmp/isRainingFifo";
+
+sem_t empty[3]; // Semaphores for empty slots
+sem_t full[3];  // Semaphores for full slots
 
 
 class TasksScheduler
@@ -129,6 +131,16 @@ public:
         {
             cout << "Task " << task.taskName << " is not feasible due to insufficient resources\n";
             return false;
+        }
+        else {
+            // consume the resources
+            for(int i = 0; i < 3; i++){
+                for(int j = 0; j < task.resources.size(); j++){
+                    if(task.resources[j].type == availableMaterials[i][0].type){
+                        availableMaterials[i].erase(availableMaterials[i].begin());
+                    }
+                }
+            }
         }
 
         // Skilled work not available

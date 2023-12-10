@@ -11,6 +11,9 @@
 #include <sys/types.h>
 #include <cstring>
 #include <algorithm>
+#include <semaphore.h>
+#include <semaphore.h>
+
 #include "Resources.h"
 #include "Tasks.h"
 #include "Workers.h"
@@ -24,7 +27,7 @@ bool isRaining = false;
 int parentToChild[2];
 int childToParent[2];
 const char *runningFifoPath = "/tmp/isRunningFifo";
-//const char *rainingFifoPath = "/tmp/isRainingFifo";
+const char *rainingFifoPath = "/tmp/isRainingFifo";
 const char *idleWorkersFifoPath = "/tmp/idleWorkersFifo";
 const char *workingWorkersFifoPath = "/tmp/workingWorkersFifo";
 const char *workerLeaveAlert = "/tmp/workerLeaveAlert";
@@ -36,9 +39,12 @@ TaskGenerator taskGenerator;
 TasksScheduler tasksScheduler;
 WorkerGenerator workerGenerator;
 
-pthread_mutex_t materialsMutex[3] = {PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER};
-pthread_mutex_t backupWorkerMutex = PTHREAD_MUTEX_INITIALIZER;
+//--- Material related variables --- 
 vector<vector<Resource>> materials(3); // 0 - bricks, 1 - cement, 2 - tools
+pthread_mutex_t materialsMutex[3] = {PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER};
+
+// --- Worker related variables ---
+pthread_mutex_t backupWorkerMutex = PTHREAD_MUTEX_INITIALIZER;
 vector<Worker> backupWorkers;          // virtual workers
 vector<Worker> idleWorkers;
 vector<Worker> workingWorkers;
@@ -59,6 +65,7 @@ void *supplyFactory(void *arg)
                         continue;
                     }
                 }
+                sem_wait(&empty[i]); // Wait for an empty slot
                 pthread_mutex_lock(&materialsMutex[i]);
                 Resource r;
                 switch (i)
@@ -78,6 +85,7 @@ void *supplyFactory(void *arg)
                 materials[i].push_back(r);
                 demands[i]++;
                 pthread_mutex_unlock(&materialsMutex[i]);
+                sem_post(&full[i]); // Signal that a resource is available
             }
         }
         sleep(1); // supply after every 5 seconds
@@ -275,7 +283,7 @@ void *tasksExecution(void *arg) //
 
         Task task = tasksScheduler.getTask(isRaining, materials, idleWorkers, workingWorkers, backupWorkers);
         updateWorkersLists();
-        cout << "Task got" << endl;
+        // cout << "Task got" << endl;
         // Task task = taskGenerator.generateTask();
         int initialTime = task.time;
         cout << "Tasks Execution: Task " << task.taskName << " is being executed" << endl;
@@ -504,8 +512,9 @@ void *checkAlerts(void *arg)
                 updateWorkersLists();
             }
         }
-    
-        if(promoteBytesRead == -1) {
+
+        if (promoteBytesRead == -1)
+        {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
                 // No data was read from the FIFO, so continue with the next iteration of the loop
@@ -515,46 +524,61 @@ void *checkAlerts(void *arg)
                 perror("ERROR! "); // Print the error message specified by errno
                 break;
             }
-        } else {
-            //negative worker id == demote the worker with that id
-            if(promoteWorkerId < 0 ) {
-                cout<<"Worker "<<promoteWorkerId<<" demoted "<<endl;
-                for(int i=0;i<idleWorkers.size();i++) {
-                    if(idleWorkers[i].workerId == (-1)*promoteWorkerId) {
-                        idleWorkers[i].skillLevel --;
+        }
+        else
+        {
+            // negative worker id == demote the worker with that id
+            if (promoteWorkerId < 0)
+            {
+                cout << "Worker " << promoteWorkerId << " demoted " << endl;
+                for (int i = 0; i < idleWorkers.size(); i++)
+                {
+                    if (idleWorkers[i].workerId == (-1) * promoteWorkerId)
+                    {
+                        idleWorkers[i].skillLevel--;
                         break;
                     }
                 }
-                for(int i=0;i<workingWorkers.size();i++) {
-                    if(workingWorkers[i].workerId == (-1)*promoteWorkerId) {
-                        workingWorkers[i].skillLevel --;
-                        break;
-                    }
-                }
-                int writeback = 999;
-                write(workerPromoteAlertFd, &writeback, sizeof(writeback));
-                updateWorkersLists();
-          
-            //positive worker id == promote the worker with that id
-            } else if (promoteWorkerId > 0 ) {
-                cout<<"Worker "<<promoteWorkerId<<" promoted "<<endl;
-                for(int i=0;i<idleWorkers.size();i++) {
-                    if(idleWorkers[i].workerId == promoteWorkerId) {
-                        idleWorkers[i].skillLevel ++;
-                        break;
-                    }
-                }
-                for(int i=0;i<workingWorkers.size();i++) {
-                    if(workingWorkers[i].workerId == promoteWorkerId) {
-                        workingWorkers[i].skillLevel ++;
+                for (int i = 0; i < workingWorkers.size(); i++)
+                {
+                    if (workingWorkers[i].workerId == (-1) * promoteWorkerId)
+                    {
+                        workingWorkers[i].skillLevel--;
                         break;
                     }
                 }
                 int writeback = 999;
                 write(workerPromoteAlertFd, &writeback, sizeof(writeback));
                 updateWorkersLists();
-            } else {
-                //do nothing!
+
+                // positive worker id == promote the worker with that id
+            }
+            else if (promoteWorkerId > 0)
+            {
+                cout << "Worker " << promoteWorkerId << " promoted " << endl;
+                for (int i = 0; i < idleWorkers.size(); i++)
+                {
+                    if (idleWorkers[i].workerId == promoteWorkerId)
+                    {
+                        idleWorkers[i].skillLevel++;
+                        break;
+                    }
+                }
+                for (int i = 0; i < workingWorkers.size(); i++)
+                {
+                    if (workingWorkers[i].workerId == promoteWorkerId)
+                    {
+                        workingWorkers[i].skillLevel++;
+                        break;
+                    }
+                }
+                int writeback = 999;
+                write(workerPromoteAlertFd, &writeback, sizeof(writeback));
+                updateWorkersLists();
+            }
+            else
+            {
+                // do nothing!
             }
         }
     }
@@ -567,6 +591,13 @@ void *checkAlerts(void *arg)
 
 int main()
 {
+    // Initialize the semaphores
+    for (int i = 0; i < 3; i++)
+    {
+        sem_init(&empty[i], 0, MAX_CAPACITY);
+        sem_init(&full[i], 0, 0);
+    }
+
     srand(time(NULL));
 
     cout << "Generating workers" << endl;
