@@ -59,8 +59,9 @@ public:
     }
     void scheduleTask(Task &task)
     {
-        if(task.taskName == "Urget Repairs")
+        if(task.taskName == "Urgent Repairs")
         {
+            cout << "Urgent Task added\n";
             urgentTasks.push_back(task);
             return;
         }
@@ -249,6 +250,7 @@ public:
     {
         if(urgentTasks.size() > 0)
         {
+            cout << "Urgent Task available\n";
             Task urgentTask = urgentTasks.front();
 
             pthread_mutex_trylock(&idleWorkerMutex);
@@ -264,6 +266,7 @@ public:
             urgentTasks.erase(urgentTasks.begin());
             pthread_mutex_unlock(&urgentasksMutex);
 
+            cout << "Getting urgent task\n";
             return urgentTask;
         }
 

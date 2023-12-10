@@ -41,6 +41,8 @@ WorkerGenerator workerGenerator;
 //--- Material related variables --- 
 vector<vector<Resource>> materials(3); // 0 - bricks, 1 - cement, 2 - tools
 pthread_mutex_t materialsMutex[3] = {PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER};
+// pthread_mutex_t backupWorkerMutex = PTHREAD_MUTEX_INITIALIZER;
+vector<vector<Resource>> materials(3); // 0 - bricks, 1 - cement, 2 - tools
 
 // --- Worker related variables ---
 vector<Worker> backupWorkers;          // virtual workers
@@ -49,17 +51,19 @@ vector<Worker> workingWorkers;
 
 void *supplyFactory(void *arg)
 {
-    int demands[3] = {0, 0, 0}; //0 = brick, 1 = cement, 2 = tool
+    int demands[3] = {0, 0, 0}; // 0 = brick, 1 = cement, 2 = tool
 
     while (isRunning)
     {
         for (int i = 0; i < 3; i++)
         {
-            //If the resource is eligible for production && the demand is the highest (most consumed resource)
-            if (materials[i].size() < MAX_CAPACITY )
+            // If the resource is eligible for production && the demand is the highest (most consumed resource)
+            if (materials[i].size() < MAX_CAPACITY)
             {
-                if(demands[i] != max({demands[0], demands[1], demands[2]})) {
-                    if(rand()%2) { //50% less chance of producing the resource if it is not the most demanded resource
+                if (demands[i] != max({demands[0], demands[1], demands[2]}))
+                {
+                    if (rand() % 2)
+                    { // 50% less chance of producing the resource if it is not the most demanded resource
                         continue;
                     }
                 }
@@ -133,12 +137,16 @@ void *materialDegredation(void *arg)
     pthread_exit(NULL);
 }
 
-void* workerFatigue(void* arg) {
-    while(isRunning) {
-        for(int i = 0; i < backupWorkers.size(); i++) {
+void *workerFatigue(void *arg)
+{
+    while (isRunning)
+    {
+        for (int i = 0; i < backupWorkers.size(); i++)
+        {
             pthread_mutex_trylock(&backupWorkerMutex);
             backupWorkers[i].fatigue -= 10;
-            if(backupWorkers[i].fatigue < 0) {
+            if (backupWorkers[i].fatigue < 0)
+            {
                 backupWorkers[i].fatigue = 0;
             }
         }
@@ -170,7 +178,11 @@ Worker getWorkingWorker(int id)
             workingWorkers.erase(workingWorkers.begin() + i);
             return worker;
         }
-    }    
+    }
+
+    Worker deadWorker;
+    deadWorker.workerId = -1;
+    return deadWorker;
 }
 
 void *execution(void *arg)
@@ -321,19 +333,28 @@ void *tasksExecution(void *arg) //
                 task.time = time;
                 cout << "Task " << task.taskName << " interrupted! Time remaining: " << task.time << endl;
 
-
                 for (int i = 0; i < task.assignedWorkers.size(); i++)
                 {
                     pthread_mutex_trylock(&backupWorkerMutex);
                     Worker worker = getWorkingWorker(task.assignedWorkers[i]);
-                    worker.fatigue += (initialTime - task.time) * 5;    // fatigue increases by 5 for every second of work
+
+                    if (worker.workerId == -1)
+                    {
+                        cout << "Worker " << task.assignedWorkers[i] << " died while working on task " << task.taskName << endl;
+                        pthread_mutex_unlock(&backupWorkerMutex);
+                        continue;
+                    }
+                    worker.fatigue += (initialTime - task.time) * 5; // fatigue increases by 5 for every second of work
+
+                    
+
                     backupWorkers.push_back(worker);
                     pthread_mutex_unlock(&backupWorkerMutex);
 
                     cout << "Worker " << worker.workerId << " is now going to backup, with fatigue: " << worker.fatigue << endl;
                 }
 
-                tasksScheduler.haltTask(task);  // change to aadd to halted tasks
+                tasksScheduler.haltTask(task); // change to aadd to halted tasks
             }
             else
             {
@@ -347,7 +368,14 @@ void *tasksExecution(void *arg) //
                 {
                     pthread_mutex_trylock(&backupWorkerMutex);
                     Worker worker = getWorkingWorker(task.assignedWorkers[i]);
-                    worker.fatigue += (initialTime - task.time) * 5;    // fatigue increases by 5 for every second of work
+
+                    if (worker.workerId == -1)
+                    {
+                        cout << "Worker " << task.assignedWorkers[i] << " died while working on task " << task.taskName << endl;
+                        pthread_mutex_unlock(&backupWorkerMutex);
+                        continue;
+                    }
+                    worker.fatigue += (initialTime - task.time) * 5; // fatigue increases by 5 for every second of work
                     backupWorkers.push_back(worker);
                     pthread_mutex_unlock(&backupWorkerMutex);
 
@@ -447,6 +475,7 @@ void *checkAlerts(void *arg)
                         workingWorkers.erase(workingWorkers.begin() + i);
                         break;
                     }
+
                     // TODO @MUSA halt task which worker was assigned to
                 }
                 for (int i = 0; i < idleWorkers.size(); i++)
