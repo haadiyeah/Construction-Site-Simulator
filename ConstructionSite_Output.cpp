@@ -28,6 +28,7 @@ int parentToChild[2];
 int childToParent[2];
 const char *runningFifoPath = "/tmp/isRunningFifo";
 const char *rainingFifoPath = "/tmp/isRainingFifo";
+const char *rainingFifoPath = "/tmp/isRainingFifo";
 const char *idleWorkersFifoPath = "/tmp/idleWorkersFifo";
 const char *workingWorkersFifoPath = "/tmp/workingWorkersFifo";
 const char *workerLeaveAlert = "/tmp/workerLeaveAlert";

@@ -36,17 +36,6 @@ class WorkerGenerator {
         w.fatigue = 0;
         return w;
     }
-
-    static vector<Worker> generateDefaultWorkers() {
-        vector<Worker> workers;
-        for(int i=0;i<3;i++) {
-            for(int j=0;j<3;j++) {
-                
-            }
-        }
-        return workers;
-    }
-
 };
 
 
