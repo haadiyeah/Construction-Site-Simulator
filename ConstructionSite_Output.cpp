@@ -28,14 +28,12 @@ int parentToChild[2];
 int childToParent[2];
 const char *runningFifoPath = "/tmp/isRunningFifo";
 const char *rainingFifoPath = "/tmp/isRainingFifo";
-const char *rainingFifoPath = "/tmp/isRainingFifo";
 const char *idleWorkersFifoPath = "/tmp/idleWorkersFifo";
 const char *workingWorkersFifoPath = "/tmp/workingWorkersFifo";
 const char *workerLeaveAlert = "/tmp/workerLeaveAlert";
 const char *workerDeathAlert = "/tmp/workerDeathAlert";
 const char *workerPromotionAlert = "/tmp/workerPromotionAlert";
 
-const int MAX_CAPACITY = 50; // max capacity for each type of resource
 TaskGenerator taskGenerator;
 TasksScheduler tasksScheduler;
 WorkerGenerator workerGenerator;
@@ -45,7 +43,6 @@ vector<vector<Resource>> materials(3); // 0 - bricks, 1 - cement, 2 - tools
 pthread_mutex_t materialsMutex[3] = {PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER};
 
 // --- Worker related variables ---
-pthread_mutex_t backupWorkerMutex = PTHREAD_MUTEX_INITIALIZER;
 vector<Worker> backupWorkers;          // virtual workers
 vector<Worker> idleWorkers;
 vector<Worker> workingWorkers;
@@ -66,7 +63,7 @@ void *supplyFactory(void *arg)
                         continue;
                     }
                 }
-                sem_wait(&empty[i]); // Wait for an empty slot
+                sem_wait(&emptySem[i]); // Wait for an emptySem slot
                 pthread_mutex_lock(&materialsMutex[i]);
                 Resource r;
                 switch (i)
@@ -86,7 +83,7 @@ void *supplyFactory(void *arg)
                 materials[i].push_back(r);
                 demands[i]++;
                 pthread_mutex_unlock(&materialsMutex[i]);
-                sem_post(&full[i]); // Signal that a resource is available
+                sem_post(&fullSem[i]); // Signal that a resource is available
             }
         }
         sleep(1); // supply after every 5 seconds
@@ -592,12 +589,7 @@ void *checkAlerts(void *arg)
 
 int main()
 {
-    // Initialize the semaphores
-    for (int i = 0; i < 3; i++)
-    {
-        sem_init(&empty[i], 0, MAX_CAPACITY);
-        sem_init(&full[i], 0, 0);
-    }
+   
 
     srand(time(NULL));
 

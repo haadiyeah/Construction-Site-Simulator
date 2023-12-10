@@ -72,16 +72,11 @@ void getWorkersLists()
         return;
     }
 
-    // ssize_t bytesRead = read(idleWorkersFifoFd, buffer, sizeof(buffer) - 1);
-    // if (bytesRead == -1)
-    // {
-    //     cerr << "Failed to read from " << idleWorkersFifoPath << ": " << strerror(errno) << endl;
-    //     return;
-    // }
-
     vector<string> serializedIdleWorkers;
     ssize_t bytesRead;
-    while ((bytesRead = read(idleWorkersFifoFd, buffer, sizeof(buffer) - 1)) > 0)
+    while (((bytesRead = read(idleWorkersFifoFd, buffer, sizeof(buffer) - 1)) > 0) 
+     && (serializedIdleWorkers.size() < 25)
+    )
     {
         if (bytesRead == -1)
         {
@@ -103,21 +98,12 @@ void getWorkersLists()
         cerr << "Failed to open " << workingWorkersFifoPath << ": " << strerror(errno) << endl;
         return;
     }
-    //    ssize_t bytesRead2 = read(workingWorkersFifoFd, buffer2, sizeof(buffer2) - 1);
-    // if (bytesRead2 == -1) {
-    //     cerr << "Failed to read from " << workingWorkersFifoPath << ": " << strerror(errno) << endl;
-    //     return;
-    // }
-
-    // vector<string> serializedWorkingWorkers = split(string(buffer2), '\n');
-    // buffer2[bytesRead2] = '\0'; // Null-terminate the buffer
-    // if (bytesRead2 == sizeof(buffer2) - 1 && buffer2[bytesRead2 - 1] != '\0') {
-    //     cerr << "Buffer too small when reading from " << workingWorkersFifoPath << endl;
-    // }
-
+ 
     vector<string> serializedWorkingWorkers;
     ssize_t bytesRead2;
-    while ((bytesRead2 = read(workingWorkersFifoFd, buffer2, sizeof(buffer2) - 1)) > 0)
+    while (((bytesRead2 = read(workingWorkersFifoFd, buffer2, sizeof(buffer2) - 1)) > 0) 
+    && (serializedWorkingWorkers.size() < 25)
+    )
     {
         if (bytesRead2 == -1)
         {
@@ -170,7 +156,7 @@ int main()
     // initFifos();
 
     getWorkersLists();
-
+   
     do
     {
         cout << "\n --- Welcome To Slave Simulator! --- " << endl;
@@ -192,15 +178,22 @@ int main()
         case 1:
         {
             cout << "Worker Lists" << endl;
-            getWorkersLists();
+            try
+            {
+                getWorkersLists();
+            }
+            catch (const std::bad_alloc &e)
+            {
+                cerr << "Memory issue occurred. Please try again in a while." << endl;
+            }
 
             cout << "Idle workers:\n------------";
             for (int i = 0; i < idleWorkers.size(); i++)
             {
-                if(idleWorkers[i].workerId > 0 && idleWorkers[i].workerId < idleWorkers.size())
-                    cout << "\n\t - Worker id: " << idleWorkers[i].workerId 
-                         << "\nSkill Level: "<< idleWorkers[i].skillLevel << ", Fatigue: " << idleWorkers[i].fatigue 
-                         << "\nSkill set: {" << idleWorkers[i].skillSet[0] << ", " << idleWorkers[i].skillSet[1] << ", " << idleWorkers[i].skillSet[2] << "}"<<endl; 
+                if (idleWorkers[i].workerId > 0 && idleWorkers[i].workerId < idleWorkers.size())
+                    cout << "\n\t - Worker id: " << idleWorkers[i].workerId
+                         << "\nSkill Level: " << idleWorkers[i].skillLevel << ", Fatigue: " << idleWorkers[i].fatigue
+                         << "\nSkill set: {" << idleWorkers[i].skillSet[0] << ", " << idleWorkers[i].skillSet[1] << ", " << idleWorkers[i].skillSet[2] << "}" << endl;
             }
             cout << "------------" << endl;
             cout << "Working workers:\n------------";

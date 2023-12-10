@@ -11,6 +11,7 @@
 using namespace std;
 
 // TODO Add priority of Urgent Repairs Task
+const int MAX_CAPACITY = 50; // max capacity for each type of resource
 
 pthread_mutex_t queueRotationMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t idleWorkerMutex = PTHREAD_MUTEX_INITIALIZER;
@@ -22,9 +23,9 @@ pthread_mutex_t mediumPriorityMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t lowPriorityMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t haltedTasksMutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t urgentasksMutex = PTHREAD_MUTEX_INITIALIZER;
-//
-sem_t empty[3]; // Semaphores for empty slots
-sem_t full[3];  // Semaphores for full slots
+
+sem_t emptySem[3]; // Semaphores for empty slots
+sem_t fullSem[3];  // Semaphores for fullSem slots
 
 
 class TasksScheduler
@@ -47,6 +48,15 @@ private:
     int queueRotationTimer = 0; // keeps track of how long its been since a queue switched
 
 public:
+    TasksScheduler()
+    {
+        // Initialize the semaphores
+        for (int i = 0; i < 3; i++)
+        {
+            sem_init(&emptySem[i], 0, MAX_CAPACITY);
+            sem_init(&fullSem[i], 0, 0);
+        }
+    }
     void scheduleTask(Task &task)
     {
         if(task.taskName == "Urget Repairs")
@@ -112,7 +122,7 @@ public:
         return task;
     }
 
-    bool isTaskFeasible(Task &task, bool &isRaining, const vector<vector<Resource>> &availableMaterials, vector<Worker> &availableWorkers, vector<Worker> &activeWorkers, vector<Worker> &backupWorkers)
+    bool isTaskFeasible(Task &task, bool &isRaining, vector<vector<Resource>> &availableMaterials, vector<Worker> &availableWorkers, vector<Worker> &activeWorkers, vector<Worker> &backupWorkers)
     {
 
         bool feasibilityFlag = true;
@@ -157,7 +167,9 @@ public:
             for(int i = 0; i < 3; i++){
                 for(int j = 0; j < task.resources.size(); j++){
                     if(task.resources[j].type == availableMaterials[i][0].type){
+                        sem_wait(&fullSem[i]);
                         availableMaterials[i].erase(availableMaterials[i].begin());
+                        sem_post(&emptySem[i]);
                     }
                 }
             }

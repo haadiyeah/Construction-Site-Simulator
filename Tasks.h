@@ -78,19 +78,19 @@ public:
     }
 
     Task generateTask(int priority = 0)
-    { // priority parameter is optional, if invalid passed it will randomize.
+    {   // priority parameter is optional, if invalid passed it will randomize.
         
-        if(rand() % 10 == 0){       // 1/10 chance of generating urgent repair   
-            Task t;
-            t.taskName = "Urgent Repair";
-            t.priority = 1;
-            t.time = 5;
-            t.numWorkers = 1;
-            t.indoor = true;
+        // if(rand() % 10 == 0){       // 1/10 chance of generating urgent repair   
+        //     Task t;
+        //     t.taskName = "Urgent Repair";
+        //     t.priority = 1;
+        //     t.time = 5;
+        //     t.numWorkers = 1;
+        //     t.indoor = true;
 
-            cout << "Generated urgent repair" << endl;
-            return t;
-        }
+        //     cout << "Generated urgent repair" << endl;
+        //     return t;
+        // }
 
         if ((priority < 1 || priority > 3))
         {
