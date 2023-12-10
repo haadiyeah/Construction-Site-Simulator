@@ -69,7 +69,7 @@ void *supplyFactory(void *arg)
                 pthread_mutex_unlock(&materialsMutex[i]);
             }
         }
-        sleep(5); // supply after every 5 seconds
+        sleep(1); // supply after every 5 seconds
     }
     pthread_exit(NULL);
 }
@@ -87,7 +87,7 @@ void *materialDegredation(void *arg)
                 Resource r = materials[i].front();
                 // materials[i].pop_back(); // remove the first pushed resource
                 r.quality -= 10;
-                cout << "Material Degredation: " << r.type << " quality is " << r.quality << endl;
+                // cout << "Material Degredation: " << r.type << " quality is " << r.quality << endl;
                 if (r.quality > 0)
                 {
                     // materials[i].push_back(r);
@@ -149,7 +149,9 @@ Worker getWorkingWorker(int id)
     {
         if (workingWorkers[i].workerId == id)
         {
-            return workingWorkers[i];
+            Worker worker = workingWorkers[i];
+            workingWorkers.erase(workingWorkers.begin() + i);
+            return worker;
         }
     }    
 }
@@ -188,17 +190,6 @@ void *execution(void *arg)
     }
 
     pthread_exit(NULL);
-}
-
-Worker getWorkingWorker(int id)
-{
-    for (int i = 0; i < workingWorkers.size(); i++)
-    {
-        if (workingWorkers[i].workerId == id)
-        {
-            return workingWorkers[i];
-        }
-    }
 }
 
 // function to update worker lists in pipe in order to be read by the other process
@@ -266,13 +257,17 @@ void *tasksExecution(void *arg) //
 
     while (isRunning)
     {
+        cout << "-" << endl;
         pipe(parentToChild);
         pipe(childToParent);
+        cout << "Tasks Execution: Pipes created" << endl;
 
-        // Task task = tasksScheduler.getTask(isRaining, materials, idleWorkers);
-        Task task = taskGenerator.generateTask();
+        Task task = tasksScheduler.getTask(isRaining, materials, idleWorkers, workingWorkers, backupWorkers);
+        cout << "Task got" << endl;
+        // Task task = taskGenerator.generateTask();
         int initialTime = task.time;
         cout << "Tasks Execution: Task " << task.taskName << " is being executed" << endl;
+        cout << "Tasks Execution: Task time: " << task.time << endl;
 
         pid_t pid = fork();
 
@@ -324,6 +319,8 @@ void *tasksExecution(void *arg) //
             }
             else
             {
+                task.time = time;
+
                 cout << "Task " << task.taskName << " completed!" << endl;
                 // release workers
 
@@ -524,18 +521,19 @@ int main()
 
     for (int i = 0; i < EXECUTERS; i++)
     { // create threads for executing tasks
-       pthread_create(&executeTasks[i], NULL, tasksExecution, NULL);
+        pthread_create(&executeTasks[i], NULL, tasksExecution, NULL);
     }
 
     pthread_join(checkRunningStatus, NULL);
+    pthread_join(checkAlertsStatus, NULL);
     pthread_join(supply, NULL);
     pthread_join(degrade, NULL);
+    pthread_join(fatigue, NULL);
     pthread_join(createTask, NULL);
-    pthread_join(checkAlertsStatus, NULL);
 
     for (int i = 0; i < EXECUTERS; i++)
     {
-     pthread_join(executeTasks[i], NULL);
+        pthread_join(executeTasks[i], NULL);
     }
 
     // remove fifo

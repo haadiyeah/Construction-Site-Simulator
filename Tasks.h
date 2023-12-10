@@ -32,6 +32,7 @@ private:
     void initTask(Task &t)
     {
         t.time = rand() % 10 + 1;
+        cout << "Generated time: " << t.time << endl;
         int numResources = rand() % 5 + 1;
         for (int j = 0; j < numResources; j++)
         {
@@ -95,6 +96,7 @@ public:
             break;
         }
         
+        cout << "Invalid priority passed to generateTask" << endl;
         Task t;
         t.taskName = "Invalid task";
         return t; //will never reach here

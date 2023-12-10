@@ -41,20 +41,23 @@ public:
         switch (task.priority)
         {
         case 1:
+            cout << "Task " << task.taskName << " added to high priority queue\n";
             highPriorityTasks.push_back(task);
             break;
         case 2:
+            cout << "Task " << task.taskName << " added to medium priority queue\n";
             mediumPriorityTasks.push_back(task);
             break;
         case 3:
+            cout << "Task " << task.taskName << " added to low priority queue\n";
             lowPriorityTasks.push_back(task);
             break;
         }
     }
 
-    Task getTask(bool isRaining, vector<vector<Resource>> availableMaterials, vector<Worker> availableWorkers, vector<Worker> activeWorkers, vector<Worker> backupWorkers)
+    Task getTask(bool isRaining, vector<vector<Resource>> &availableMaterials, vector<Worker> &availableWorkers, vector<Worker> &activeWorkers, vector<Worker> &backupWorkers)
     {
-
+        cout << "Getting Task\n";
         /*
             Implemented through MLFQ (MultiLevel Feedback Queue)
             Returns a Task from one of the three arrays
@@ -76,10 +79,12 @@ public:
         queueRotationTimer++;
         pthread_mutex_unlock(&queueRotationMutex);
 
-        return getTaskFromQueue(currentQueue, isRaining, availableMaterials, availableWorkers, activeWorkers, backupWorkers);
+        Task task = getTaskFromQueue(currentQueue, isRaining, availableMaterials, availableWorkers, activeWorkers, backupWorkers);
+        cout << "QUEUE Task: " << task.taskName << "\ttime: " << task.time << endl;
+        return task;
     }
 
-    bool isTaskFeasible(Task &task, bool isRaining, const vector<vector<Resource>> &availableMaterials, vector<Worker> availableWorkers, vector<Worker> activeWorkers, vector<Worker> backupWorkers)
+    bool isTaskFeasible(Task &task, bool isRaining, const vector<vector<Resource>> &availableMaterials, vector<Worker> &availableWorkers, vector<Worker> &activeWorkers, vector<Worker> &backupWorkers)
     {
 
         bool feasibilityFlag = true;
@@ -88,6 +93,7 @@ public:
         // Outdoor task become nonfeasible
         if (isRaining && !task.indoor)
         {
+            cout << "Task " << task.taskName << " is not feasible due to rain\n";
             return false;
         }
 
@@ -115,6 +121,7 @@ public:
         // Resources not Sufficient
         if (availBricks < brickCounter || availCement < cementCounter || availTools < toolCounter)
         {
+            cout << "Task " << task.taskName << " is not feasible due to insufficient resources\n";
             return false;
         }
 
@@ -144,6 +151,7 @@ public:
         pthread_mutex_unlock(&idleWorkerMutex);
         if (AWCounter < task.numWorkers)
         {
+            cout << "Task " << task.taskName << " is not feasible due to insufficient skilled workers\n";
             return false;
         }
 
@@ -181,7 +189,7 @@ public:
 
         return true;
     }
-    Task getTaskFromQueue(vector<Task> &priorityQueue, bool isRaining, vector<vector<Resource>> availableMaterials, vector<Worker> availableWorkers, vector<Worker> activeWorkers, vector<Worker> backupWorkers)
+    Task getTaskFromQueue(vector<Task> &priorityQueue, bool isRaining, vector<vector<Resource>> &availableMaterials, vector<Worker> &availableWorkers, vector<Worker> &activeWorkers, vector<Worker> &backupWorkers)
     {
 
         /*
@@ -193,51 +201,40 @@ public:
         Halted Tasks have highest priority. -- Use haltTask() to populate haltedTasks
         */
 
-
         if (!isRaining && !haltedTasks.empty()) // haltedTasks has most priority over other
         {
-            Task haltedTask = haltedTasks.front();
-            haltedTasks.erase(haltedTasks.begin());
+            while (!haltedTasks.empty())
+            {
+                Task haltedTask = haltedTasks.front();
+                haltedTasks.erase(haltedTasks.begin());
 
-            if (isTaskFeasible(haltedTask, isRaining, availableMaterials, availableWorkers, activeWorkers, backupWorkers))
-            {
-                return haltedTask;
-            }
-            else
-            {
-                haltedTasks.push_back(haltedTask);
+                if (isTaskFeasible(haltedTask, isRaining, availableMaterials, availableWorkers, activeWorkers, backupWorkers))
+                {
+                    return haltedTask;
+                }
+                else
+                {
+                    cout << "Task " << haltedTask.taskName << " is not feasible\n";
+                    haltedTasks.push_back(haltedTask);
+                }
             }
         }
         else
         {
-            if (!(isRaining))
+            while (!(priorityQueue.empty()))
             {
-                if (!(priorityQueue.empty()))
-                {
-                    Task selectTask = priorityQueue.front();
-                    priorityQueue.erase(priorityQueue.begin());
+                Task selectTask = priorityQueue.front();
+                priorityQueue.erase(priorityQueue.begin());
 
-                    if (isTaskFeasible(selectTask, isRaining, availableMaterials, availableWorkers, activeWorkers, backupWorkers))
-                    {
-                        return selectTask;
-                    }
-                    else
-                    {
-                        priorityQueue.push_back(selectTask);
-                    }
-                }
-            }
-            else
-            {
-                for (auto iterate = priorityQueue.begin(); iterate != priorityQueue.end(); ++iterate)
+                if (isTaskFeasible(selectTask, isRaining, availableMaterials, availableWorkers, activeWorkers, backupWorkers))
                 {
-                    if (isTaskFeasible(*iterate, isRaining, availableMaterials, availableWorkers, activeWorkers, backupWorkers))
-                    {
-                        // removes Task from the queue and returns feasible
-                        Task feasibleTask = *iterate;
-                        priorityQueue.erase(iterate);
-                        return feasibleTask;
-                    }
+                    cout << "Task " << selectTask.taskName << " selected from priority queue\n";
+                    return selectTask;
+                }
+                else
+                {
+                    cout << "Task " << selectTask.taskName << " is not feasible\n";
+                    priorityQueue.push_back(selectTask);
                 }
             }
         }
@@ -267,17 +264,22 @@ public:
     }
     vector<Task> &getQueueByIndex(int index)
     {
-        switch (index)
+        while (1)
         {
-        case 0:
-            return highPriorityTasks;
-        case 1:
-            return mediumPriorityTasks;
-        case 2:
-            return lowPriorityTasks;
-        default:
-            // will always set to High prio (edge case -- most likely wont happen)
-            return highPriorityTasks;
+            switch (index)
+            {
+            case 0:
+                if (!highPriorityTasks.empty())
+                    return highPriorityTasks;
+            case 1:
+                if (!mediumPriorityTasks.empty())
+                    return mediumPriorityTasks;
+            case 2:
+                if (!lowPriorityTasks.empty())
+                    return lowPriorityTasks;
+            default:
+                index = 0; 
+            }
         }
     }
 
